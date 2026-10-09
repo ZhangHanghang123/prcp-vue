@@ -298,14 +298,24 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="4">
-            <el-form-item label="总分"><el-input-number v-model="ruleForm.totalScore" :min="0" :precision="2" style="width:100%" /></el-form-item>
+          <el-col :span="8">
+            <el-form-item label="总分" label-width="50px"><el-input-number v-model="ruleForm.totalScore" :min="0" :precision="2" style="width:100%" /></el-form-item>
           </el-col>
-          <el-col :span="4">
-            <el-form-item label="方向">
+        </el-row>
+        <el-row :gutter="12">
+          <el-col :span="6">
+            <el-form-item label="方向" label-width="50px">
               <el-select v-model="ruleForm.higherIsBetter" style="width:100%">
                 <el-option label="↑ 正向" :value="1" />
                 <el-option label="↓ 逆向" :value="0" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="18">
+            <el-form-item label="状态">
+              <el-select v-model="ruleForm.status" style="width:140px">
+                <el-option label="ACTIVE" value="ACTIVE" />
+                <el-option label="INACTIVE" value="INACTIVE" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -313,12 +323,6 @@
         <el-form-item label="规则说明">
           <el-input v-model="ruleForm.description" type="textarea" :rows="2"
                     placeholder="如：ROE ≥ 11% 得 100 分；9-11% 得 80 分；<9% 得 60 分" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="ruleForm.status" style="width:140px">
-            <el-option label="ACTIVE" value="ACTIVE" />
-            <el-option label="INACTIVE" value="INACTIVE" />
-          </el-select>
         </el-form-item>
 
         <!-- 评分段（内联可编辑表 — PIECEWISE 区间 / LINEAR 锚点 两种结构） -->
