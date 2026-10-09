@@ -1,0 +1,408 @@
+<template>
+  <div class="coa-page">
+    <div class="page-header">
+      <h2>账户册维护</h2>
+      <p class="desc">SpringBoot + Vue2 + ElementUI PoC 模块</p>
+    </div>
+
+    <el-card class="filter-card">
+      <el-row :gutter="20" type="flex" align="middle">
+        <el-col :span="8">
+          <el-select v-model="filterSchemeId" placeholder="选择账户册方案" filterable
+                     @change="loadTree" style="width: 100%;">
+            <el-option v-for="s in schemes" :key="s.id"
+                       :label="`${s.schemeCode} | ${s.schemeName}`"
+                       :value="s.id" />
+          </el-select>
+        </el-col>
+        <el-col :span="8">
+          <el-input v-model="keyword" placeholder="搜索节点编码/名称" clearable />
+        </el-col>
+        <el-col :span="8">
+          <el-button icon="el-icon-search" @click="loadTree">查询</el-button>
+          <el-button icon="el-icon-refresh-left" @click="onReset">重置</el-button>
+          <el-button type="primary" icon="el-icon-plus" @click="onAdd">新增节点</el-button>
+          <el-button icon="el-icon-folder" @click="onManageScheme">维护方案</el-button>
+        </el-col>
+      </el-row>
+    </el-card>
+
+    <el-card class="table-card" v-loading="loading">
+      <el-table :data="filteredTree" row-key="id" border default-expand-all
+                :tree-props="{ children: 'children' }">
+        <el-table-column prop="nodeCode" label="节点编码" width="180" />
+        <el-table-column prop="nodeName" label="节点名称" />
+        <el-table-column prop="nodeLevel" label="层级" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.nodeLevel === 1 ? 'danger' : (row.nodeLevel === 2 ? 'warning' : 'info')">
+              L{{ row.nodeLevel }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" align="center">
+          <template #default="{ row }">
+            <el-button type="text" @click="onAddChild(row)">新增子节点</el-button>
+            <el-button type="text" @click="onEdit(row)">编辑</el-button>
+            <el-button type="text" style="color: #f56c6c;" @click="onDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 节点 编辑 Modal -->
+    <el-dialog :title="editing ? '编辑节点' : '新增节点'" :visible.sync="modalVisible" width="540px">
+      <el-form :model="form" :rules="rules" ref="formRef" label-width="100px">
+        <el-form-item label="父节点">
+          <el-cascader v-model="form.parentPath"
+                       :options="cascaderOptions"
+                       :props="{ checkStrictly: true, value: 'id', label: 'nodeName' }"
+                       clearable change-on-select
+                       placeholder="不选则挂在根节点" />
+        </el-form-item>
+        <el-form-item label="节点编码" prop="nodeCode">
+          <el-input v-model="form.nodeCode" />
+        </el-form-item>
+        <el-form-item label="节点名称" prop="nodeName">
+          <el-input v-model="form.nodeName" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="form.sortOrder" :min="0" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="modalVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="onSubmit">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 方案 维护 Modal -->
+    <el-dialog title="账户册方案维护" :visible.sync="schemeModalVisible" width="720px"
+               @open="loadAllSchemes">
+      <div class="scheme-toolbar">
+        <el-button type="primary" size="small" icon="el-icon-plus" @click="onAddScheme">新增方案</el-button>
+        <el-button size="small" icon="el-icon-refresh" @click="loadAllSchemes">刷新</el-button>
+      </div>
+      <el-table :data="allSchemes" v-loading="schemeLoading" border size="small">
+        <el-table-column type="index" label="#" width="50" align="center" />
+        <el-table-column prop="schemeCode" label="方案编码" width="160" />
+        <el-table-column prop="schemeName" label="方案名称" />
+        <el-table-column prop="description" label="描述" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" size="mini">
+              {{ row.status || 'ACTIVE' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" align="center">
+          <template #default="{ row }">
+            <el-button type="text" @click="onEditScheme(row)">编辑</el-button>
+            <el-button type="text" style="color: #f56c6c;" @click="onDeleteScheme(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <!-- 方案 编辑子 Modal -->
+    <el-dialog :title="editingScheme ? '编辑方案' : '新增方案'"
+               :visible.sync="schemeFormVisible" width="540px" append-to-body>
+      <el-form :model="schemeForm" :rules="schemeRules" ref="schemeFormRef" label-width="100px">
+        <el-form-item label="方案编码" prop="schemeCode">
+          <el-input v-model="schemeForm.schemeCode" placeholder="例如 ZXCOA_V1" />
+        </el-form-item>
+        <el-form-item label="方案名称" prop="schemeName">
+          <el-input v-model="schemeForm.schemeName" placeholder="例如 账户册总览_v7" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="schemeForm.description" type="textarea" :rows="3" />
+        </el-form-item>
+        <el-form-item v-if="editingScheme" label="状态">
+          <el-radio-group v-model="schemeForm.status">
+            <el-radio-button label="ACTIVE">启用</el-radio-button>
+            <el-radio-button label="INACTIVE">停用</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="schemeFormVisible = false">取消</el-button>
+        <el-button type="primary" :loading="schemeSubmitting" @click="onSchemeSubmit">提交</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script>
+import { coaApi } from '@/api/coa'
+
+/**
+ * @file 账户册维护 (COA - Chart of Accounts)
+ * @desc 维护账户册方案 + 节点树 (层级 L1/L2/L3)。布局:
+ *       顶部筛选条 (方案/关键字) + 节点树表格 (新增子节点/编辑/删除) +
+ *       节点编辑 Modal + 方案维护 Modal (单独 dialog, 维护所有方案, 含状态)。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /coa/scheme             - 当前活动方案列表
+ *   GET    /coa/scheme/all         - 全部方案 (含 INACTIVE) — 方案维护用
+ *   POST   /coa/scheme             - 新建方案
+ *   PUT    /coa/scheme/{id}        - 更新方案
+ *   DELETE /coa/scheme/{id}        - 删除方案
+ *   GET    /coa/node/tree/{schemeId} - 方案下的节点树
+ *   POST   /coa/node               - 新增节点
+ *   PUT    /coa/node/{id}          - 更新节点
+ *   DELETE /coa/node/{id}          - 删除节点
+ *
+ * 关联组件: 无
+ * 关联路由: /coa (group: 系统维护)
+ */
+export default {
+  name: 'CoaIndex',
+  data() {
+    return {
+      schemes: [],
+      filterSchemeId: null,
+      keyword: '',
+      tree: [],
+      loading: false,
+      modalVisible: false,
+      editing: null,
+      submitting: false,
+      /** 节点编辑表单 (parentPath 是 cascader 路径, 提交时取最后一级作为 parentId) */
+      form: { parentPath: [], nodeCode: '', nodeName: '', sortOrder: 0 },
+      rules: {
+        nodeCode: [{ required: true, message: '请输入节点编码' }],
+        nodeName: [{ required: true, message: '请输入节点名称' }]
+      },
+
+      // 方案维护
+      schemeModalVisible: false,
+      allSchemes: [],
+      schemeLoading: false,
+      schemeFormVisible: false,
+      editingScheme: null,
+      schemeSubmitting: false,
+      /** 方案编辑表单 */
+      schemeForm: { schemeCode: '', schemeName: '', description: '', status: 'ACTIVE' },
+      schemeRules: {
+        schemeCode: [{ required: true, message: '请输入方案编码' }],
+        schemeName: [{ required: true, message: '请输入方案名称' }]
+      }
+    }
+  },
+  computed: {
+    filteredTree() {
+      if (!this.keyword) return this.tree
+      const kw = this.keyword.toLowerCase()
+      const filter = (n) => {
+        const matched = (n.nodeCode || '').toLowerCase().includes(kw) || (n.nodeName || '').toLowerCase().includes(kw)
+        const children = (n.children || []).map(filter).filter(Boolean)
+        if (matched || children.length) return { ...n, children }
+        return null
+      }
+      return this.tree.map(filter).filter(Boolean)
+    },
+    cascaderOptions() {
+      const toOpts = (n) => ({
+        id: n.id,
+        nodeName: `${n.nodeCode} ${n.nodeName}`,
+        children: (n.children || []).map(toOpts)
+      })
+      return this.tree.map(toOpts)
+    }
+  },
+  async mounted() {
+    await this.loadSchemes()
+  },
+  methods: {
+    /**
+     * <p>加载当前活动方案列表, 默认选第一个并触发 loadTree</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async loadSchemes() {
+      this.schemes = await coaApi.listSchemes()
+      if (this.schemes.length) {
+        this.filterSchemeId = this.schemes[0].id
+        await this.loadTree()
+      }
+    },
+    /**
+     * <p>加载当前 filterSchemeId 下的节点树</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async loadTree() {
+      if (!this.filterSchemeId) return
+      this.loading = true
+      try {
+        this.tree = await coaApi.listTree(this.filterSchemeId)
+      } finally { this.loading = false }
+    },
+    /** 重置关键字并刷新树 */
+    onReset() { this.keyword = ''; this.loadTree() },
+    /** 打开新增节点弹窗 (挂在根节点) */
+    onAdd() {
+      this.editing = null
+      this.form = { parentPath: [], nodeCode: '', nodeName: '', sortOrder: 0 }
+      this.modalVisible = true
+    },
+    /**
+     * <p>打开新增子节点弹窗 (parentPath 预填)</p>
+     *
+     * @param {Object} parent 父节点行
+     * @returns {void}
+     */
+    onAddChild(parent) {
+      this.editing = null
+      this.form = {
+        parentPath: [parent.id],
+        nodeCode: '', nodeName: '',
+        sortOrder: 0
+      }
+      this.modalVisible = true
+    },
+    /**
+     * <p>打开编辑节点弹窗, 用行数据回填</p>
+     *
+     * @param {Object} row 节点行
+     * @returns {void}
+     */
+    onEdit(row) {
+      this.editing = row
+      this.form = { ...row, parentPath: [] }
+      this.modalVisible = true
+    },
+    /**
+     * <p>删除节点 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 节点行 (含 id/nodeCode/nodeName)
+     * @returns {void}
+     */
+    onDelete(row) {
+      this.$confirm(`确认删除 [${row.nodeCode}] ${row.nodeName}？`, '提示', { type: 'warning' })
+        .then(async () => {
+          await coaApi.deleteNode(row.id)
+          this.$message.success('删除成功')
+          this.loadTree()
+        })
+        .catch(() => {})
+    },
+    /**
+     * <p>提交节点弹窗 (新增或更新)</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async onSubmit() {
+      await this.$refs.formRef.validate()
+      this.submitting = true
+      try {
+        const data = {
+          schemeId: this.filterSchemeId,
+          nodeCode: this.form.nodeCode,
+          nodeName: this.form.nodeName,
+          sortOrder: this.form.sortOrder,
+          parentId: this.form.parentPath.length
+            ? this.form.parentPath[this.form.parentPath.length - 1]
+            : null
+        }
+        if (this.editing) {
+          await coaApi.updateNode(this.editing.id, data)
+        } else {
+          await coaApi.createNode(data)
+        }
+        this.$message.success('保存成功')
+        this.modalVisible = false
+        this.loadTree()
+      } finally { this.submitting = false }
+    },
+
+    // ===== 方案维护 =====
+    /** 打开方案维护 Modal */
+    onManageScheme() { this.schemeModalVisible = true },
+    /** 加载全部方案 (含 INACTIVE) */
+    async loadAllSchemes() {
+      this.schemeLoading = true
+      try {
+        this.allSchemes = await coaApi.listSchemesAll()
+      } finally { this.schemeLoading = false }
+    },
+    /** 打开新增方案弹窗 */
+    onAddScheme() {
+      this.editingScheme = null
+      this.schemeForm = { schemeCode: '', schemeName: '', description: '', status: 'ACTIVE' }
+      this.schemeFormVisible = true
+    },
+    /**
+     * <p>打开编辑方案弹窗, 用行数据回填</p>
+     *
+     * @param {Object} row 方案行 (含 id/schemeCode/schemeName/description/status)
+     * @returns {void}
+     */
+    onEditScheme(row) {
+      this.editingScheme = row
+      this.schemeForm = {
+        schemeCode: row.schemeCode,
+        schemeName: row.schemeName,
+        description: row.description || '',
+        status: row.status || 'ACTIVE'
+      }
+      this.schemeFormVisible = true
+    },
+    /**
+     * <p>删除方案 (级联使方案下所有节点失效), 带 confirm 二次确认</p>
+     *
+     * @param {Object} row 方案行 (含 id/schemeCode/schemeName)
+     * @returns {void}
+     */
+    onDeleteScheme(row) {
+      this.$confirm(`确认删除方案 [${row.schemeCode}] ${row.schemeName}？\n该方案下的所有节点也会一并失效。`, '提示', { type: 'warning' })
+        .then(async () => {
+          await coaApi.deleteScheme(row.id)
+          this.$message.success('方案删除成功')
+          await this.loadAllSchemes()
+          // 同步顶部方案下拉
+          await this.loadSchemes()
+        })
+        .catch(() => {})
+    },
+    /**
+     * <p>提交方案弹窗 (新增或更新), 同时刷新方案维护列表和顶部下拉</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async onSchemeSubmit() {
+      await this.$refs.schemeFormRef.validate()
+      this.schemeSubmitting = true
+      try {
+        if (this.editingScheme) {
+          await coaApi.updateScheme(this.editingScheme.id, this.schemeForm)
+          this.$message.success('方案已更新')
+        } else {
+          await coaApi.createScheme(this.schemeForm)
+          this.$message.success('方案已创建')
+        }
+        this.schemeFormVisible = false
+        await this.loadAllSchemes()
+        await this.loadSchemes()
+      } finally { this.schemeSubmitting = false }
+    }
+  }
+}
+</script>
+
+<style scoped>
+.coa-page { padding: 0; }
+.page-header {
+  background: #fff;
+  padding: 16px 24px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.page-header h2 { margin: 0; }
+.page-header .desc { color: #999; font-size: 13px; margin: 4px 0 0; }
+.filter-card { margin: 0 16px 16px; }
+.table-card { margin: 0 16px; }
+.scheme-toolbar { margin-bottom: 12px; }
+</style>
