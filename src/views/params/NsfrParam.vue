@@ -240,6 +240,27 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file NSFR 参数补录
+ * @desc 监管指标 NSFR (Net Stable Funding Ratio 净稳定资金比例) 的参数补录页面。
+ *       NSFR = 可用稳定资金 ASF / 所需稳定资金 RSF。
+ *       布局: 头部 + 3-stat 行(记录总数/ASF 节点/RSF 节点) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /nsfr-param         - 列表
+ *   GET    /nsfr-param/options - 下拉选项(方案/节点/运算符/日期)
+ *   POST   /nsfr-param         - 新增
+ *   PUT    /nsfr-param/{id}    - 更新
+ *   DELETE /nsfr-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /nsfr-param (group: 计量参数补录)
+ */
 export default {
   data() {
     return {
@@ -251,10 +272,14 @@ export default {
       operators: [],
       dataDates: [],
 
+      /** 当前过滤选中的方案 ID (默认 null → 选项加载后默认 ZX_COA) */
       filterSchemeId: null,
+      /** 当前过滤选中的数据日期 (默认 '2025-12-31') */
       filterDate: '2025-12-31',
+      /** 关键字过滤 (编码/名称/规则说明) */
       keyword: '',
 
+      /** 编辑弹窗的表单数据 */
       dlg: this.initDlg(),
 
       rules: {
@@ -292,6 +317,7 @@ export default {
     await this.loadOptions()
   },
   methods: {
+    /** 返回新增/编辑对话框的默认值 (空表单) */
     initDlg() {
       return {
         show: false,
@@ -311,10 +337,21 @@ export default {
         status: 'ACTIVE'
       }
     },
+    /**
+     * <p>运算符 key 转 dictLabel</p>
+     *
+     * @param {string} key 运算符字典 key
+     * @returns {string} 显示名
+     */
     opLabel(key) {
       const o = this.operators.find(x => x.dictKey === key)
       return o ? o.dictLabel : (key || '-')
     },
+    /**
+     * <p>加载下拉选项 (方案/节点/运算符/日期), 默认 ZX_COA, 加载后立即触发 loadList</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const opt = await request.get('/nsfr-param/options')
@@ -332,6 +369,11 @@ export default {
         this.$message.error('选项加载失败')
       }
     },
+    /**
+     * <p>按 filterSchemeId/filterDate/keyword 当前条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -347,6 +389,7 @@ export default {
         this.loading = false
       }
     },
+    /** 重置筛选条件为默认 (ZX_COA + 2025-12-31 + 空关键字) */
     onReset() {
       const zxcoa = this.schemes.find(s => s.schemeCode === 'ZX_COA')
       this.filterSchemeId = zxcoa ? zxcoa.id : (this.schemes[0] ? this.schemes[0].id : null)
@@ -354,6 +397,12 @@ export default {
       this.keyword = ''
       this.loadList()
     },
+    /**
+     * <p>对话框方案切换: 同步 schemeCode 并清空节点选择</p>
+     *
+     * @param {number} v 选中的方案 ID
+     * @returns {void}
+     */
     onSchemePick(v) {
       const sch = this.schemes.find(s => s.id === v)
       if (sch) this.dlg.schemeCode = sch.schemeCode
@@ -362,6 +411,7 @@ export default {
       this.dlg.nodeCode = ''
       this.dlg.nodeName = ''
     },
+    /** 节点选择后自动回填编码/名称 */
     onNodePick(v) {
       const nd = this.nodesOfScheme.find(n => n.id === v)
       if (nd) {
@@ -369,6 +419,7 @@ export default {
         this.dlg.nodeName = nd.nodeName
       }
     },
+    /** 打开新增弹窗 (复用筛选条件预填方案/日期) */
     onAdd() {
       this.dlg = this.initDlg()
       this.dlg.show = true
@@ -380,6 +431,12 @@ export default {
       this.dlg.dataDate = this.filterDate || '2025-12-31'
       this.$nextTick(() => { if (this.$refs.dlgForm) this.$refs.dlgForm.clearValidate() })
     },
+    /**
+     * <p>打开编辑弹窗, 用行数据回填表单</p>
+     *
+     * @param {Object} row 表格行 (含 id/schemeId/nodeId/asfFactor/rsfFactor 等字段)
+     * @returns {void}
+     */
     onEdit(row) {
       this.dlg = {
         show: true,
@@ -400,9 +457,15 @@ export default {
       }
       this.$nextTick(() => { if (this.$refs.dlgForm) this.$refs.dlgForm.clearValidate() })
     },
+    /** 对话框关闭清理 */
     onDlgClose() {
       this.dlg = this.initDlg()
     },
+    /**
+     * <p>保存弹窗 (新增或更新), 带表单校验</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onSave() {
       try {
         await this.$refs.dlgForm.validate()
@@ -442,6 +505,12 @@ export default {
         this.saveLoading = false
       }
     },
+    /**
+     * <p>删除一条记录 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 表格行 (含 id 字段)
+     * @returns {Promise<void>}
+     */
     async onRemove(row) {
       try {
         await this.$confirm('确认删除该条 NSFR 记录？', '提示', { type: 'warning' })

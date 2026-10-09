@@ -167,6 +167,27 @@
 <script>
 import { reverseResultApi } from '@/api/reverse-result'
 
+/**
+ * @file 反算结果查询
+ * @desc 反算结果查询页。布局: 顶部筛选 (方案/运行/月份) + 2 个 Tab:
+ *         1) 账户册矩阵 - 节点 × 8 个期限桶 (m1/m3/m6/m12/y10/y15/y20/y30) × (orig + rem) + 7 度量
+ *         2) 大类汇总 - 按 category 聚合 (ASSET/LIABILITY/EQUITY/OFF_BALANCE/OTHER), 含按年的 orig/rem 合计
+ *       数据源: prcp_data_reverse (基于测算方案 + 运行 + 月份)。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /reverse-result/schemes                        - 方案列表 (含 run_count/total_rows)
+ *   GET    /reverse-result/runs?scheme_code=              - run 列表
+ *   GET    /reverse-result/dates?scheme_code=&run_id=     - 月份列表
+ *   GET    /reverse-result/by-scheme-matrix?scheme_code=&run_id=&date_offset= - 节点矩阵
+ *   GET    /reverse-result/category-summary?scheme_code=&run_id=&date_offset= - 大类汇总
+ *   GET    /reverse-result/export-xlsx?scheme_code=&run_id= - 导出 Excel (直链)
+ *
+ * 关联组件: 无
+ * 关联路由: /reverse-result (group: 反算结果)
+ */
 export default {
   name: 'ReverseResultIndex',
   data() {
@@ -176,7 +197,7 @@ export default {
       schemes: [],
       runs: [],
       dates: [],
-      // 筛选
+      /** 顶部筛选 (方案 / 运行 / 月份) */
       filter: {
         schemeCode: '',
         runId: null,
@@ -206,6 +227,7 @@ export default {
     await this.loadSchemes()
   },
   methods: {
+    /** 加载方案列表 (自动选第一条 + 触发 onSchemeChange) */
     async loadSchemes() {
       this.loading.schemes = true
       try {
@@ -221,6 +243,7 @@ export default {
       } finally { this.loading.schemes = false }
     },
 
+    /** 方案切换 — 重置 run/date + 加载 run 列表 + 自动查询矩阵 */
     async onSchemeChange() {
       this.filter.runId = null
       this.filter.dateOffset = null
@@ -242,6 +265,7 @@ export default {
       }
     },
 
+    /** 运行切换 — 重置 dateOffset + 加载月份列表 */
     async onRunChange() {
       this.filter.dateOffset = null
       this.dates = []
@@ -257,6 +281,7 @@ export default {
       }
     },
 
+    /** 加载节点矩阵 (按当前 scheme/run/date), 同时触发 loadSummary */
     async loadMatrix() {
       if (!this.filter.schemeCode) {
         this.$message.warning('请先选择方案')
@@ -283,6 +308,7 @@ export default {
       this.loadSummary()
     },
 
+    /** 加载大类汇总 */
     async loadSummary() {
       if (!this.filter.schemeCode) return
       this.loading.summary = true
@@ -298,6 +324,7 @@ export default {
       } finally { this.loading.summary = false }
     },
 
+    /** 重置所有筛选条件 + 清空列表 */
     reset() {
       this.filter = { schemeCode: '', runId: null, dateOffset: null }
       this.runs = []
@@ -306,6 +333,7 @@ export default {
       this.summary = []
     },
 
+    /** 打开导出 Excel 直链 (新窗口) */
     downloadXlsx() {
       if (!this.filter.schemeCode) {
         this.$message.warning('请先选择方案')
@@ -318,24 +346,48 @@ export default {
       window.open(url, '_blank')
     },
 
+    /**
+     * <p>数值格式化 (zh-CN 千分位 + 最多 2 位小数)</p>
+     *
+     * @param {number|string} v 原始数值
+     * @returns {string} 格式化字符串
+     */
     formatNum(v) {
       if (v == null || v === '') return '-'
       const n = Number(v)
       if (Number.isNaN(n)) return v
       return n.toLocaleString('zh-CN', { maximumFractionDigits: 2 })
     },
+    /**
+     * <p>小数 → 百分比显示 (×100 + 2 位小数 + %)</p>
+     *
+     * @param {number|string} v 0~1 小数
+     * @returns {string} 百分比字符串
+     */
     pct(v) {
       if (v == null || v === '') return '-'
       const n = Number(v)
       if (Number.isNaN(n)) return v
       return (n * 100).toFixed(2) + '%'
     },
+    /**
+     * <p>桶 key → 显示标签 (m1 → 1M, y10 → 10Y)</p>
+     *
+     * @param {string} k 桶 key
+     * @returns {string} 显示标签
+     */
     bucketLabel(k) {
       if (!k) return ''
       if (k.startsWith('m')) return k.substring(1) + 'M'
       if (k.startsWith('y')) return k.substring(1) + 'Y'
       return k
     },
+    /**
+     * <p>大类 → Element UI tag 类型 (兼容中文/英文)</p>
+     *
+     * @param {string} cat 大类名
+     * @returns {string} tag 类型
+     */
     catTagType(cat) {
       const s = (cat == null ? '' : String(cat)).toLowerCase()
       if (s.includes('asset') || s === '资产') return 'danger'
@@ -344,6 +396,12 @@ export default {
       if (s.includes('off') || s === '表外') return 'info'
       return ''
     },
+    /**
+     * <p>表格表头 render 函数 — 给表头加 title 属性</p>
+     *
+     * @param {string} tip tooltip 文本
+     * @returns {Function} el-table render-header 函数
+     */
     renderHeader(tip) {
       return (h, { column }) => h('span', { attrs: { title: tip } }, [column.label])
     }

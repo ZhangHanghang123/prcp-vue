@@ -346,6 +346,28 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file NIM 参数补录
+ * @desc 监管指标 NIM (Net Interest Margin 净息差) 的参数补录页面。
+ *       布局: 头部 + 3-stat 行(记录总数/生息资产节点/计息负债节点) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       NIM = (生息资产利息收入 − 计息负债利息支出) / 生息资产。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /nim-param         - 列表
+ *   GET    /nim-param/options - 下拉选项(方案/节点/运算符/日期)
+ *   POST   /nim-param         - 新增
+ *   PUT    /nim-param/{id}    - 更新
+ *   DELETE /nim-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /nim-param (group: 计量参数补录)
+ */
+
 const DEFAULT_FORM = () => ({
   schemeId: null,
   schemeCode: '',
@@ -372,6 +394,7 @@ export default {
       submitting: false,
       records: [],
       options: { schemes: [], nodes: [], operators: [], data_dates: [] },
+      /** 顶部筛选条件 (方案 ID / 数据日期 / 关键字) */
       filters: {
         schemeId: null,
         dataDate: '2025-12-31',
@@ -379,6 +402,7 @@ export default {
       },
       dialogVisible: false,
       editing: null,
+      /** 编辑弹窗的表单数据 */
       form: DEFAULT_FORM(),
       rules: {
         schemeId: [{ required: true, message: '请选择账户册方案', trigger: 'change' }],
@@ -406,12 +430,23 @@ export default {
     'filters.dataDate'() { this.loadList() }
   },
   methods: {
+    /**
+     * <p>利率格式化 (空 / NaN / 0 → "0.000000", 否则保留 6 位小数)</p>
+     *
+     * @param {number|string} v 利率原始值 (0~1, 如 0.045 = 4.5%)
+     * @returns {string} 格式化字符串
+     */
     fmtRate(v) {
       const n = Number(v)
       if (v == null || isNaN(n) || n === 0) return '0.000000'
       return n.toFixed(6)
     },
 
+    /**
+     * <p>加载下拉选项 (方案/节点/运算符/日期), 默认选 ZX_COA 方案</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const r = await request.get('/nim-param/options')
@@ -431,6 +466,11 @@ export default {
       }
     },
 
+    /**
+     * <p>按 filters 当前条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -447,10 +487,12 @@ export default {
       }
     },
 
+    /** 筛选条件变更时刷新列表 */
     onFilterChange() {
       this.loadList()
     },
 
+    /** 重置筛选条件为默认 (ZX_COA + 2025-12-31 + 空关键字) */
     onReset() {
       const zx = this.options.schemes.find(s => s.scheme_code === 'ZX_COA')
       this.filters.schemeId = zx ? zx.id : (this.options.schemes[0] && this.options.schemes[0].id) || null
@@ -459,6 +501,11 @@ export default {
     },
 
     // ===== 新增 / 编辑 =====
+    /**
+     * <p>打开新增弹窗 (复用筛选条件预填方案/日期)</p>
+     *
+     * @returns {void}
+     */
     onAdd() {
       this.editing = null
       this.form = DEFAULT_FORM()
@@ -471,6 +518,12 @@ export default {
       this.dialogVisible = true
     },
 
+    /**
+     * <p>打开编辑弹窗, 用行数据回填表单</p>
+     *
+     * @param {Object} row 表格行 (含 id/schemeId/nodeId 等字段)
+     * @returns {void}
+     */
     onEdit(row) {
       this.editing = row
       this.form = {
@@ -493,6 +546,12 @@ export default {
       this.dialogVisible = true
     },
 
+    /**
+     * <p>对话框方案切换: 同步 schemeCode 并清空已选节点</p>
+     *
+     * @param {number|string} sid 选中的方案 ID
+     * @returns {void}
+     */
     onSchemeChange(sid) {
       const sch = this.options.schemes.find(s => Number(s.id) === Number(sid))
       this.form.schemeCode = sch ? sch.scheme_code : ''
@@ -502,6 +561,7 @@ export default {
       this.form.nodeName = ''
     },
 
+    /** 节点选择后自动回填编码/名称 */
     onNodeChange(nid) {
       const nd = this.nodesOfScheme.find(n => Number(n.id) === Number(nid))
       if (nd) {
@@ -510,6 +570,11 @@ export default {
       }
     },
 
+    /**
+     * <p>保存弹窗 (新增或更新), 带表单校验 + nodeName 自动补全</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onSave() {
       try {
         await this.$refs.formRef.validate()
@@ -562,6 +627,12 @@ export default {
       }
     },
 
+    /**
+     * <p>删除一条记录 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 表格行 (含 id/nodeCode/dataDate 字段)
+     * @returns {void}
+     */
     onRemove(row) {
       this.$confirm(`确认删除 NIM 记录「${row.nodeCode} @ ${row.dataDate}」？`, '提示', { type: 'warning' })
         .then(async () => {
@@ -576,6 +647,7 @@ export default {
         .catch(() => {})
     },
 
+    /** 对话框关闭后清空校验 */
     onDialogClosed() {
       this.$nextTick(() => {
         if (this.$refs.formRef) this.$refs.formRef.clearValidate()

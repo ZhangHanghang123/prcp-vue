@@ -75,6 +75,28 @@
 <script>
 import { mapGetters } from 'vuex'
 
+/**
+ * @file 全局主布局 (侧边栏 + 顶部导航 + 路由切换)
+ * @desc PRCP-Java 平台的全局布局。结构:
+ *         1) 顶部 Header: 左 Logo + 标题 + 徽章 (Java 版); 右 用户下拉 (退出登录)
+ *         2) 侧边栏 Aside: 8 大菜单分组 (按业务流程), 单项直接渲染 el-menu-item, 多项用 el-submenu
+ *         3) 主内容 Main: <router-view/> 路由切换
+ *       菜单分组:
+ *         - 工作台: 结果驾驶舱 (直链 reverse?tab=result)
+ *         - 基础数据: 账户册维护、基础数据维护
+ *         - 市场与情景: 利率曲线管理、ESG 经济情景生成
+ *         - 指标定义: 报表表项管理、指标管理、指标计量系数
+ *         - 引擎建模: 模型管理、新业务模拟方案
+ *         - 计量参数补录: CET1/LCR/NIM/NSFR/ROE/EVE 参数补录
+ *         - 反算分析: 测算方案、反算 Dashboard、反算指标结果表、反算结果查询、资产负债表
+ *         - 系统管理: 用户·角色·字典·审计
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联组件: 无
+ * 关联路由: 全局 layout (匹配所有非 /login 路径)
+ */
 export default {
   name: 'MainLayout',
   computed: {
@@ -160,6 +182,12 @@ export default {
     }
   },
   methods: {
+    /**
+     * <p>顶部用户下拉菜单命令处理 (logout → 退出登录)</p>
+     *
+     * @param {string} cmd 命令 key (目前仅 'logout')
+     * @returns {void}
+     */
     onCommand(cmd) {
       if (cmd === 'logout') {
         this.$confirm('确认退出？', '提示', { type: 'warning' })

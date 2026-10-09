@@ -248,6 +248,26 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file CET1 参数补录
+ * @desc 监管指标 CET1 (Common Equity Tier 1) 的参数补录页面。
+ *       布局: 头部 + 3-stat 行(记录总数/CET1 分子节点/RWA 风险节点) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /cet1-param         - 列表
+ *   GET    /cet1-param/options - 下拉选项(方案/节点/运算符/日期)
+ *   POST   /cet1-param         - 新增
+ *   PUT    /cet1-param/{id}    - 更新
+ *   DELETE /cet1-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /cet1-param (group: 计量参数补录)
+ */
 export default {
   name: 'Cet1Param',
   data() {
@@ -259,11 +279,13 @@ export default {
       nodes: [],
       operators: [],
       dataDates: [],
+      /** 顶部筛选条件 (方案 ID / 数据日期 / 关键字) */
       flt: {
         schemeId: undefined,
         dataDate: '2025-12-31',
         keyword: ''
       },
+      /** 新增/编辑弹窗表单数据 */
       dlg: this.makeBlankDlg()
     }
   },
@@ -285,7 +307,7 @@ export default {
     this.loadOptions()
   },
   methods: {
-    /** 新对话框默认值 */
+    /** 返回新增对话框的默认值 (空表单) */
     makeBlankDlg() {
       return {
         show: false,
@@ -307,10 +329,21 @@ export default {
         status: 'ACTIVE'
       }
     },
+    /**
+     * <p>运算符 key 转 dictLabel</p>
+     *
+     * @param {string} key 运算符字典 key (+ / - / ...)
+     * @returns {string} 显示名 (找不到则返回 key 本身)
+     */
     opLabel(key) {
       const o = this.operators.find(x => x.dictKey === key)
       return o ? o.dictLabel : (key || '')
     },
+    /**
+     * <p>加载下拉选项 (方案 / 节点 / 运算符 / 数据日期) 并默认选中 ZX_COA 方案</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const r = await request.get('/cet1-param/options')
@@ -326,6 +359,11 @@ export default {
         this.$message.error('选项加载失败')
       }
     },
+    /**
+     * <p>按 flt 当前筛选条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -341,6 +379,11 @@ export default {
         this.loading = false
       }
     },
+    /**
+     * <p>重置筛选条件为默认 (ZX_COA + 2025-12-31)</p>
+     *
+     * @returns {void}
+     */
     onReset() {
       const zx = this.schemes.find(s => s.schemeCode === 'ZX_COA')
       this.flt = {
@@ -349,12 +392,23 @@ export default {
         keyword: ''
       }
     },
+    /**
+     * <p>打开新增弹窗 (复用当前筛选条件预填方案/日期)</p>
+     *
+     * @returns {void}
+     */
     onAdd() {
       this.dlg = this.makeBlankDlg()
       this.dlg.schemeId = this.flt.schemeId
       this.dlg.dataDate = this.flt.dataDate || '2025-12-31'
       this.dlg.show = true
     },
+    /**
+     * <p>打开编辑弹窗, 用行数据回填表单</p>
+     *
+     * @param {Object} r 表格行 (含 id/schemeId/nodeId 等字段)
+     * @returns {void}
+     */
     onEdit(r) {
       this.dlg = {
         ...this.makeBlankDlg(),
@@ -376,6 +430,11 @@ export default {
         status:             r.status || 'ACTIVE'
       }
     },
+    /**
+     * <p>对话框关闭后的清理 (重置 dlg)</p>
+     *
+     * @returns {void}
+     */
     onDlgClosed() {
       this.dlg = this.makeBlankDlg()
     },
@@ -393,6 +452,11 @@ export default {
         this.dlg.nodeName = n.nodeName
       }
     },
+    /**
+     * <p>保存弹窗 (新增或更新)</p>
+     *
+     * @returns {void}
+     */
     onSave() {
       if (!this.dlg.schemeId) return this.$message.error('请选择账户册方案')
       if (!this.dlg.dataDate) return this.$message.error('请选择数据日期')
@@ -427,6 +491,12 @@ export default {
         this.$message.error(err && err.message ? err.message : '保存失败')
       }).finally(() => { this.dlg.saving = false })
     },
+    /**
+     * <p>删除一条记录 (带 popconfirm 二次确认)</p>
+     *
+     * @param {Object} r 表格行 (含 id 字段)
+     * @returns {void}
+     */
     onRemove(r) {
       request.delete('/cet1-param/' + r.id).then(() => {
         this.$message.success('已删除')

@@ -292,6 +292,42 @@ import { reverseApi } from '@/api/reverse'
 import { coaApi } from '@/api/coa'
 import DashboardPanels from './components/DashboardPanels.vue'
 
+/**
+ * @file 反算分析主入口
+ * @desc 反算分析 (Reverse Calculation) 顶层页面。4 个 Tab:
+ *         1) 测算方案 - 方案 CRUD (编码/名称/账户册/模型/算法/预测期/状态), 支持详情查看和运行
+ *         2) 目标设置 - 当前方案下的目标列表 (KPI + 目标值 + 约束方式 GE/LE/EQ + 权重), 支持"开始测算"
+ *         3) 测算结果 - 嵌入 <DashboardPanels> 子组件 (KPI 卡 + 趋势 + Top 节点 + 热力图)
+ *         4) 运行记录 - 所有 run (PENDING/RUNNING/SUCCESS/FAILED/CANCELLED), 支持日志/结果/取消/删除
+ *       支持通过 ?tab=result 直接进入结果驾驶舱 (来自侧边栏"结果驾驶舱"入口)。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /reverse/scheme?keyword=&status=                     - 方案分页
+ *   GET    /reverse/scheme/{id}                                  - 方案详情
+ *   POST   /reverse/scheme                                       - 新建方案
+ *   PUT    /reverse/scheme/{id}                                  - 更新方案
+ *   DELETE /reverse/scheme/{id}                                  - 删除方案
+ *   GET    /reverse/scheme/options/model                         - 模型下拉
+ *   GET    /reverse/scheme/options/kpi                           - KPI 下拉
+ *   GET    /reverse/scheme/options/algorithm                     - 算法下拉
+ *   GET    /reverse/target?schemeId=                             - 目标列表
+ *   POST   /reverse/target                                       - 新建目标
+ *   PUT    /reverse/target/{id}                                  - 更新目标
+ *   DELETE /reverse/target/{id}                                  - 删除目标
+ *   POST   /reverse/run                                          - 新建 run
+ *   POST   /reverse/run/{id}/start                               - 启动 run
+ *   POST   /reverse/run/{id}/cancel                              - 取消 run
+ *   DELETE /reverse/run/{id}                                     - 删除 run
+ *   GET    /reverse/run?limit=                                   - run 列表
+ *   GET    /reverse/run/{id}/logs                                - run 日志
+ *   GET    /reverse/run/{id}/result                              - run 结果
+ *
+ * 关联组件: DashboardPanels (./components/DashboardPanels.vue)
+ * 关联路由: /reverse (group: 反算分析)
+ */
 export default {
   name: 'ReverseIndex',
   components: { DashboardPanels },
@@ -355,14 +391,37 @@ export default {
     this.loadOptions()
   },
   methods: {
+    /** 返回空的方案表单 (snake_case 字段) */
     newSchemeForm() { return { id: null, scheme_code: '', scheme_name: '', coa_scheme_id: null, model_id: null, data_date: '', horizon_months: 24, algorithm: 'HEURISTIC', status: 'DRAFT', description: '' } },
+    /** 返回空的目标表单 */
     newTargetForm() { return { id: null, scheme_id: null, kpi_id: null, kpi_code: '', target_name: '', target_value: 0, constraint_type: 'GE', weight: 1.0, horizon_month: 0, sort_order: 0, description: '' } },
+    /** 重置方案表单 (弹窗关闭时调用) */
     resetSchemeForm() { this.schemeForm = this.newSchemeForm() },
+    /** 重置目标表单 */
     resetTargetForm() { this.targetForm = this.newTargetForm() },
+    /**
+     * <p>方案状态 → Element UI tag 类型</p>
+     *
+     * @param {string} s 状态 (DRAFT/RUNNING/SUCCESS/DISABLED/FAILED)
+     * @returns {string} tag 类型
+     */
     statusType(s) { return { DRAFT: 'info', RUNNING: 'warning', SUCCESS: 'success', DISABLED: 'danger', FAILED: 'danger' }[s] || '' },
+    /**
+     * <p>运行状态 → Element UI tag 类型</p>
+     *
+     * @param {string} s 状态 (PENDING/RUNNING/SUCCESS/CANCELLED/FAILED)
+     * @returns {string} tag 类型
+     */
     runStatusType(s) { return { PENDING: 'info', RUNNING: 'warning', SUCCESS: 'success', CANCELLED: 'danger', FAILED: 'danger' }[s] || '' },
+    /**
+     * <p>算法编码 → 中文名</p>
+     *
+     * @param {string} code 算法编码
+     * @returns {string} 中文名
+     */
     algorithmLabel(code) { return (this.algorithms.find(a => a.code === code) || {}).name || code },
 
+    /** 加载 4 个下拉选项 (模型/KPI/算法/账户册方案) */
     async loadOptions() {
       try { const r = await reverseApi.modelOptions(); this.modelOpts = (r.data && r.data.items) || r.items || [] } catch (e) { console.warn('modelOptions failed', e) }
       try { const r = await reverseApi.kpiOptions();   this.kpiOpts   = (r.data && r.data.items) || r.items || [] } catch (e) { console.warn('kpiOptions failed', e) }
@@ -370,6 +429,7 @@ export default {
       try { const r = await coaApi.listSchemes(); this.coaSchemes = (r.data && r.data.items) || r.items || [] } catch (e) { console.warn('coaSchemes failed', e) }
     },
 
+    /** 加载方案列表 (按 schemeFilter 过滤) */
     async loadSchemes() {
       this.loadingSchemes = true
       try {
@@ -378,6 +438,7 @@ export default {
       } catch (e) { this.$message.error('加载方案失败：' + (e.message || '')) }
       finally { this.loadingSchemes = false }
     },
+    /** 加载运行列表 (limit=100) */
     async loadRuns() {
       this.loadingRuns = true
       try {
@@ -387,10 +448,17 @@ export default {
       finally { this.loadingRuns = false }
     },
 
+    /**
+     * <p>打开新建/编辑方案弹窗</p>
+     *
+     * @param {Object} [row] 方案行, 不传则新建
+     * @returns {void}
+     */
     openSchemeDialog(row) {
       this.schemeForm = row ? { ...row, data_date: row.dataDate || row.data_date } : this.newSchemeForm()
       this.schemeDialog = true
     },
+    /** 保存方案弹窗 (新增或更新) */
     async saveScheme() {
       this.savingScheme = true
       try {
@@ -402,11 +470,23 @@ export default {
       } catch (e) { this.$message.error('保存失败：' + ((e.response && e.response.data && e.response.data.msg) || e.message)) }
       finally { this.savingScheme = false }
     },
+    /**
+     * <p>删除方案 (带 confirm)</p>
+     *
+     * @param {Object} row 方案行
+     * @returns {Promise<void>}
+     */
     async removeScheme(row) {
       try { await this.$confirm(`确认删除方案 ${row.schemeName} ?`, '警告', { type: 'warning' }) } catch (e) { return }
       try { await reverseApi.deleteScheme(row.id); this.$message.success('已删除'); this.loadSchemes() }
       catch (e) { this.$message.error('删除失败：' + (e.message || '')) }
     },
+    /**
+     * <p>查看方案详情 (打开只读弹窗, 异步加载 detail)</p>
+     *
+     * @param {Object} row 方案行
+     * @returns {Promise<void>}
+     */
     async viewScheme(row) {
       this.detailDialog = true
       this.schemeDetail = { id: row.id }
@@ -418,6 +498,7 @@ export default {
         this.detailDialog = false
       }
     },
+    /** 从详情弹窗直接进入编辑模式 */
     editFromDetail() {
       this.detailDialog = false
       const d = this.schemeDetail || {}
@@ -430,17 +511,30 @@ export default {
     },
 
     // ===== 目标设置（独立页签） =====
+    /**
+     * <p>从测算方案表格跳到目标设置 tab 并选中</p>
+     *
+     * @param {Object} row 方案行
+     * @returns {void}
+     */
     goToTargetTab(row) {
       // 从「测算方案」表格中点击「目标设置」按钮 → 切到目标设置 tab 并选中
       this.targetSchemeId = row.id
       this.activeTab = 'targets'
       this.loadTargets()
     },
+    /**
+     * <p>目标设置 tab 内切换当前方案</p>
+     *
+     * @param {number} id 方案 ID
+     * @returns {void}
+     */
     onTargetSchemeChange(id) {
       this.currentScheme = (this.schemes.find(s => s.id === id) || null)
       if (id) this.loadTargets()
       else    this.targets = []
     },
+    /** 加载当前方案下的目标列表 */
     async loadTargets() {
       if (!this.targetSchemeId) { this.targets = []; return }
       this.loadingTargets = true
@@ -451,12 +545,19 @@ export default {
       } catch (e) { this.$message.error('加载目标失败') }
       finally { this.loadingTargets = false }
     },
+    /**
+     * <p>打开新建/编辑目标弹窗</p>
+     *
+     * @param {Object} [row] 目标行, 不传则新建
+     * @returns {void}
+     */
     openTargetDialog(row) {
       this.targetForm = row
         ? { ...row }
         : { ...this.newTargetForm(), scheme_id: this.targetSchemeId, sort_order: this.targets.length }
       this.targetInnerDialog = true
     },
+    /** 保存目标弹窗 (新增或更新) */
     async saveTarget() {
       this.savingTarget = true
       try {
@@ -468,6 +569,12 @@ export default {
       } catch (e) { this.$message.error('保存失败：' + ((e.response && e.response.data && e.response.data.msg) || e.message)) }
       finally { this.savingTarget = false }
     },
+    /**
+     * <p>删除目标 (带 confirm)</p>
+     *
+     * @param {Object} row 目标行
+     * @returns {Promise<void>}
+     */
     async removeTarget(row) {
       try { await this.$confirm('确认删除该目标?', '警告', { type: 'warning' }) } catch (e) { return }
       try { await reverseApi.deleteTarget(row.id); this.$message.success('已删除'); await this.loadTargets() }
@@ -475,6 +582,11 @@ export default {
     },
 
     // ===== 开始测算 =====
+    /**
+     * <p>为当前方案发起测算 (创建 run + 启动 run, 跳到结果 tab)</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onStartCalc() {
       if (!this.currentScheme) return
       if (this.targets.length === 0) {
@@ -498,6 +610,12 @@ export default {
     },
 
     // ===== 运行记录 =====
+    /**
+     * <p>为方案直接运行 (绕过目标设置, 跳到运行记录 tab)</p>
+     *
+     * @param {Object} row 方案行
+     * @returns {Promise<void>}
+     */
     async runScheme(row) {
       try {
         const r = await reverseApi.createRun({ scheme_id: row.id, description: `由 ${row.schemeName} 触发` })
@@ -508,15 +626,33 @@ export default {
         this.activeTab = 'runs'
       } catch (e) { this.$message.error('运行失败：' + (e.message || '')) }
     },
+    /**
+     * <p>取消运行 (PENDING/RUNNING 状态)</p>
+     *
+     * @param {Object} row 运行行
+     * @returns {Promise<void>}
+     */
     async cancelRun(row) {
       try { await reverseApi.cancelRun(row.id); this.$message.success('已取消'); this.loadRuns() }
       catch (e) { this.$message.error('取消失败') }
     },
+    /**
+     * <p>删除运行 (带 confirm, 会级联删除结果数据)</p>
+     *
+     * @param {Object} row 运行行
+     * @returns {Promise<void>}
+     */
     async removeRun(row) {
       try { await this.$confirm('确认删除该运行记录?结果数据也会被删除', '警告', { type: 'warning' }) } catch (e) { return }
       try { await reverseApi.deleteRun(row.id); this.$message.success('已删除'); this.loadRuns() }
       catch (e) { this.$message.error('删除失败') }
     },
+    /**
+     * <p>查看运行日志弹窗</p>
+     *
+     * @param {Object} row 运行行
+     * @returns {Promise<void>}
+     */
     async viewLogs(row) {
       this.currentRun = row
       this.logDialog = true
@@ -525,6 +661,12 @@ export default {
         this.logs = (r.data && r.data.items) || r.items || []
       } catch (e) { this.$message.error('加载日志失败') }
     },
+    /**
+     * <p>查看运行结果弹窗 (Optimal + 耗时 + KPI 达成 + 明细行)</p>
+     *
+     * @param {Object} row 运行行
+     * @returns {Promise<void>}
+     */
     async viewResult(row) {
       this.currentRun = row
       this.resultDialog = true

@@ -277,6 +277,26 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file LCR 参数补录
+ * @desc 监管指标 LCR (Liquidity Coverage Ratio 流动性覆盖率) 的参数补录页面。
+ *       布局: 头部 + 3-stat 行(记录总数/LCR 分子/LCR 分母) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /lcr-param         - 列表
+ *   GET    /lcr-param/options - 下拉选项(方案/节点/运算符/日期)
+ *   POST   /lcr-param         - 新增
+ *   PUT    /lcr-param/{id}    - 更新
+ *   DELETE /lcr-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /lcr-param (group: 计量参数补录)
+ */
 export default {
   name: 'LcrParam',
   data() {
@@ -290,8 +310,11 @@ export default {
       availableDates: [],
 
       // === 筛选 ===
+      /** 当前过滤选中的方案 ID (默认 null → 加载完选项后默认 ZX_COA) */
       filterSchemeId: null,
+      /** 当前过滤选中的数据日期 (默认 '2025-12-31') */
       filterDate: defaultDate,
+      /** 关键字过滤 (编码 / 名称 / 规则说明) */
       keyword: '',
 
       // === 列表 ===
@@ -300,6 +323,7 @@ export default {
       tableHeight: 600,
 
       // === 新增/编辑 ===
+      /** 编辑弹窗的表单数据 */
       dlg: {
         show: false,
         submitting: false,
@@ -354,6 +378,11 @@ export default {
   },
   methods: {
     // ===== 选项 =====
+    /**
+     * <p>加载下拉选项 (方案/节点/运算符/数据日期), 默认选中 ZX_COA 方案</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const resp = await request.get('/lcr-param/options')
@@ -375,6 +404,11 @@ export default {
     },
 
     // ===== 列表 =====
+    /**
+     * <p>按 filterSchemeId/filterDate/keyword 当前筛选条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -392,8 +426,10 @@ export default {
       }
     },
 
+    /** 筛选条件变更时刷新列表 */
     onFilterChange() { this.loadList() },
 
+    /** 重置筛选条件为默认 (ZX_COA + 2025-12-31 + 空关键字) */
     onReset() {
       const zxcoa = this.schemes.find(s => s.schemeCode === 'ZX_COA')
       this.filterSchemeId = zxcoa ? zxcoa.id : (this.schemes[0] ? this.schemes[0].id : null)
@@ -403,6 +439,11 @@ export default {
     },
 
     // ===== 新增 / 编辑 =====
+    /**
+     * <p>打开新增弹窗 (复用筛选条件预填方案/日期)</p>
+     *
+     * @returns {void}
+     */
     onAdd() {
       this.dlg = {
         show: true,
@@ -420,6 +461,12 @@ export default {
       }
     },
 
+    /**
+     * <p>打开编辑弹窗, 用行数据回填表单</p>
+     *
+     * @param {Object} row 表格行 (含 id/schemeId/nodeId 等字段)
+     * @returns {void}
+     */
     onEdit(row) {
       this.dlg = {
         show: true,
@@ -443,6 +490,12 @@ export default {
       }
     },
 
+    /**
+     * <p>对话框内方案切换: 同步 schemeCode, 并清空已选节点</p>
+     *
+     * @param {number|string} v 选中的方案 ID
+     * @returns {void}
+     */
     onSchemeChange(v) {
       const sch = this.schemes.find(s => s.id === v)
       this.dlg.schemeCode = sch ? sch.schemeCode : ''
@@ -451,6 +504,7 @@ export default {
       this.dlg.nodeName = ''
     },
 
+    /** 节点选择后自动回填编码/名称 */
     onNodeChange(v) {
       const nd = this.nodesOfScheme.find(n => n.id === v)
       if (nd) {
@@ -459,6 +513,11 @@ export default {
       }
     },
 
+    /**
+     * <p>保存弹窗 (新增或更新), 带表单校验</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onSave() {
       try {
         await this.$refs.formRef.validate()
@@ -498,6 +557,12 @@ export default {
       }
     },
 
+    /**
+     * <p>删除一条记录 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 表格行 (含 id/nodeCode 字段)
+     * @returns {Promise<void>}
+     */
     async onRemove(row) {
       try {
         await this.$confirm(`确认删除 LCR 参数记录 [${row.nodeCode}]？`, '提示', { type: 'warning' })
@@ -510,15 +575,23 @@ export default {
       }
     },
 
+    /** 关闭对话框 (清理 show 标记) */
     onDlgClosed() {
       this.dlg.show = false
     },
 
     // ===== 工具 =====
+    /**
+     * <p>运算符 key 转 dictLabel</p>
+     *
+     * @param {string} k 运算符字典 key
+     * @returns {string} 显示名
+     */
     opLabel(k) {
       const o = this.operators.find(it => it.dictKey === k)
       return o ? o.dictLabel : k
     },
+    /** 计算表格自适应高度 (window.innerHeight - 380) */
     calcTableHeight() {
       this.tableHeight = Math.max(400, window.innerHeight - 380)
     }

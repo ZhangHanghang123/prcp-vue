@@ -230,6 +230,28 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file ROE 参数补录
+ * @desc 监管指标 ROE (Return on Equity 净资产收益率) 的参数补录页面。
+ *       ROE = 净利润 / 平均净资产。
+ *       布局: 头部 + 3-stat 行(记录总数/净利润节点/净资产节点) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /roe-param         - 列表
+ *   GET    /roe-param/options - 下拉选项(方案/节点/运算符)
+ *   POST   /roe-param         - 新增
+ *   PUT    /roe-param/{id}    - 更新
+ *   DELETE /roe-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /roe-param (group: 计量参数补录)
+ */
+
 const DEFAULT_DATE = '2025-12-31'
 
 function emptyDialog() {
@@ -263,7 +285,9 @@ export default {
       nodes: [],
       operators: [],
       rows: [],
+      /** 顶部筛选条件 (方案 ID / 数据日期 / 关键字) */
       flt: { schemeId: null, dataDate: DEFAULT_DATE, keyword: '' },
+      /** 编辑弹窗的表单数据 */
       dlg: emptyDialog(),
       dlgRules: {
         schemeId: [{ required: true, message: '请选择账户册方案', trigger: 'change' }],
@@ -306,6 +330,11 @@ export default {
     deleteApi(id) { return request.delete('/roe-param/' + id) },
 
     // ----- 选项 -----
+    /**
+     * <p>加载下拉选项 (方案/节点/运算符), 默认选 ZX_COA</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const opt = await this.optionsApi()
@@ -323,6 +352,11 @@ export default {
     },
 
     // ----- 列表 -----
+    /**
+     * <p>按 flt 当前筛选条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -338,7 +372,9 @@ export default {
         this.loading = false
       }
     },
+    /** 顶部方案变更时刷新列表 */
     onSchemeChange() { this.loadList() },
+    /** 重置筛选条件为默认 (ZX_COA + DEFAULT_DATE + 空关键字) */
     onReset() {
       const zx = this.schemes.find(s => s.schemeCode === 'ZX_COA')
       this.flt = {
@@ -349,6 +385,12 @@ export default {
     },
 
     // ----- 运算符显示 -----
+    /**
+     * <p>运算符 key 转 dictLabel</p>
+     *
+     * @param {string} key 运算符字典 key
+     * @returns {string} 显示名
+     */
     getOperatorLabel(key) {
       if (!key) return ''
       const op = this.operators.find(o => o.dictKey === key)
@@ -356,6 +398,12 @@ export default {
     },
 
     // ----- 新增 / 编辑 -----
+    /**
+     * <p>打开新增/编辑弹窗 (row 不传则新增, 传则编辑)</p>
+     *
+     * @param {Object} [row] 表格行 (含 id/schemeId/nodeId/netProfitFactor/netAssetFactor 等字段), 不传则为新增
+     * @returns {void}
+     */
     openDlg(row) {
       if (row) {
         this.dlg = {
@@ -388,6 +436,12 @@ export default {
         this.dlg.dataDate = this.flt.dataDate || DEFAULT_DATE
       }
     },
+    /**
+     * <p>对话框方案切换: 同步 schemeCode 并清掉已选节点</p>
+     *
+     * @param {number} v 选中的方案 ID
+     * @returns {void}
+     */
     onDlgSchemeChange(v) {
       const sch = this.schemes.find(s => s.id === v)
       if (sch) this.dlg.schemeCode = sch.schemeCode
@@ -396,6 +450,7 @@ export default {
       this.dlg.nodeCode = ''
       this.dlg.nodeName = ''
     },
+    /** 节点选择后自动回填编码/名称 */
     onDlgNodeChange(v) {
       const nd = this.nodesOfDlgScheme.find(n => n.id === v)
       if (nd) {
@@ -403,10 +458,16 @@ export default {
         this.dlg.nodeName = nd.nodeName
       }
     },
+    /** 对话框关闭清理 + 清空校验 */
     onDlgClosed() {
       this.dlg = emptyDialog()
       if (this.$refs.dlgForm) this.$refs.dlgForm.clearValidate()
     },
+    /**
+     * <p>保存弹窗 (新增或更新), 带表单校验</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onSave() {
       try {
         await this.$refs.dlgForm.validate()
@@ -446,6 +507,12 @@ export default {
     },
 
     // ----- 删除 -----
+    /**
+     * <p>删除一条记录 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 表格行 (含 id/nodeCode/dataDate 字段)
+     * @returns {Promise<void>}
+     */
     async onDelete(row) {
       try {
         await this.$confirm(`确定删除 ROE 参数记录「${row.nodeCode} · ${row.dataDate}」？`, '提示', { type: 'warning' })

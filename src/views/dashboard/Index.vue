@@ -196,12 +196,32 @@ import 'echarts/lib/component/markLine'
 import 'echarts/lib/component/visualMap'
 import 'echarts/lib/component/dataZoom'
 
+/**
+ * @file 测算方案结果驾驶舱 (反算仪表盘)
+ * @desc PRD v3 总览视图, 布局自上而下:
+ *       1. Hero Header (白底图标 + 标题 + 元信息 + 操作)
+ *       2. 筛选条 (组合方案/运行记录/预测月份/数据日期/账户册方案/预测期)
+ *       3. 9 个 KPI 卡片 (3 行, 含趋势箭头 + 进度条)
+ *       4. 双栏: 5 指标 24 月趋势 (双 Y 轴) + 大类分布 (环形 + 柱图)
+ *       5. 节点 × 指标 热力图 (按类别/关键词过滤)
+ *       6. 双栏: Top 10 节点 + 风险预警
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET  /dashboard/reverse-overview?data_date=&scheme_id= - 一次拉全部 KPI/trend/donut/nodeMatrix/topNodes/riskAlerts/filterOptions
+ *
+ * 关联组件: 无
+ * 关联路由: /dashboard (group: 反算仪表盘)
+ */
 export default {
   name: 'ReverseDashboard',
   components: { VChart },
   data() {
     return {
       loading: false,
+      /** 顶部筛选条件 (组合方案/运行记录/预测月份/数据日期/账户册方案/预测期) */
       filter: {
         reverseSchemeId: null,
         runId: null,
@@ -210,13 +230,21 @@ export default {
         schemeId: 8,            // 默认中信银行账户册 2026
         predictMonths: 24
       },
+      /** 筛选下拉数据源 (组合方案/运行记录/账户册方案) */
       filterOptions: { reverseSchemes: [], reverseRuns: [], coaSchemes: [] },
+      /** 9 个 KPI 卡片数据 (含 value/trend/color/total) */
       kpis: [],
+      /** 5 指标 24 月趋势 (双 Y 轴: % + 亿) */
       trend: { dates: [], series: [] },
+      /** 大类环形分布 */
       donut: [],
+      /** 大类柱图 (节点数) */
       bar: [],
+      /** 节点 × 指标 矩阵 (热力图数据源) */
       nodeMatrix: [],
+      /** Top 10 节点 (按余额绝对值) */
       topNodes: [],
+      /** 风险预警列表 */
       alerts: [],
       heatmapChart: null,
       heatmapMetric: 'CURRENT_BALANCE',
@@ -338,9 +366,15 @@ export default {
     if (this.heatmapChart) this.heatmapChart.dispose()
   },
   methods: {
+    /** 窗口 resize 时重新渲染热力图 */
     onResize() {
       if (this.heatmapChart) this.heatmapChart.resize()
     },
+    /**
+     * <p>加载仪表盘全部数据 (一次拉 KPI/trend/donut/nodeMatrix/topNodes/riskAlerts/filterOptions)</p>
+     *
+     * @returns {Promise<void>}
+     */
     async load() {
       this.loading = true
       try {
@@ -363,6 +397,12 @@ export default {
         this.loading = false
       }
     },
+    /**
+     * <p>KPI 数值格式化 (整数不补零, 其他保 2 位小数)</p>
+     *
+     * @param {Object} k KPI 对象 (含 value)
+     * @returns {string} 格式化字符串
+     */
     formatKpi(k) {
       if (k == null) return '-'
       const v = k.value
@@ -374,12 +414,24 @@ export default {
       }
       return v
     },
+    /**
+     * <p>数值格式化 (整数不补零, 其他保 2 位小数)</p>
+     *
+     * @param {number} v 原始数值
+     * @returns {string} 格式化字符串
+     */
     fmtNum(v) {
       if (v == null) return '-'
       const n = Number(v)
       if (Number.isInteger(n)) return n.toLocaleString('zh-CN')
       return n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     },
+    /**
+     * <p>数值 → 百分比格式化 (|v| <= 1 视为小数 → *100, 否则按原值)</p>
+     *
+     * @param {number} v 原始数值 (0.035 = 3.5% 或已是百分比)
+     * @returns {string} 百分比字符串
+     */
     fmtNumPct(v) {
       if (v == null) return '-'
       const n = Number(v)
@@ -387,12 +439,29 @@ export default {
       const pct = Math.abs(n) <= 1 ? n * 100 : n
       return pct.toFixed(2)
     },
+    /**
+     * <p>大类 key 转中文标签</p>
+     *
+     * @param {string} c 大类 key
+     * @returns {string} 中文标签
+     */
     catLabel(c) {
       return ({ ASSET: '资产', LIABILITY: '负债', EQUITY: '权益', OFF_BALANCE: '表外', OTHER: '其他' })[c] || (c || '-')
     },
+    /**
+     * <p>大类 key 转 Element UI tag 类型</p>
+     *
+     * @param {string} c 大类 key
+     * @returns {string} tag 类型
+     */
     catTagType(c) {
       return ({ ASSET: 'success', LIABILITY: 'warning', EQUITY: 'info', OFF_BALANCE: '', OTHER: 'danger' })[c] || ''
     },
+    /**
+     * <p>渲染节点热力图 (按 heatmapMetric/heatmapCategory/heatmapKw 过滤, 取绝对值最大前 50)</p>
+     *
+     * @returns {void}
+     */
     renderHeatmap() {
       if (!this.$refs.heatmapChart) return
       if (!this.heatmapChart) this.heatmapChart = echarts.init(this.$refs.heatmapChart)
@@ -462,6 +531,7 @@ export default {
         }]
       }, true)
     },
+    /** 导出当前趋势快照 (开发中) */
     exportTrend() {
       this.$message.info('导出功能开发中…')
     }

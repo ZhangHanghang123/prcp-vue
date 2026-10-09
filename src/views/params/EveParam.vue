@@ -273,6 +273,27 @@
 <script>
 import request from '@/api/request'
 
+/**
+ * @file EVE 参数补录
+ * @desc 监管指标 EVE (Economic Value of Equity 经济价值变动, IRRBB 银行账户利率风险) 的参数补录页面。
+ *       布局: 头部 + 3-stat 行(记录总数/资产端节点/负债端节点) + 筛选条(方案/日期/关键词) + 规则说明 alert + 表格 + 增改删弹窗。
+ *       每条记录包含资产端/负债端的项目类型、运算符和久期 (用于加权久期 / EVE Δy 计算)。
+ *       每条记录 ID = {scheme_code}_{node_code}_{YYYYMMDD}，修改方案/节点/数据日期会生成新记录。
+ *       默认方案 ZX_COA (演示数据所在方案)，默认数据日期 2025-12-31。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET    /eve-param         - 列表
+ *   GET    /eve-param/options - 下拉选项(方案/节点/运算符/日期)
+ *   POST   /eve-param         - 新增
+ *   PUT    /eve-param/{id}    - 更新
+ *   DELETE /eve-param/{id}    - 删除
+ *
+ * 关联组件: 无
+ * 关联路由: /eve-param (group: 计量参数补录)
+ */
 export default {
   data() {
     return {
@@ -281,8 +302,10 @@ export default {
       nodes: [],
       operators: [],
       availableDates: [],
+      /** 顶部筛选条件 (方案 ID / 数据日期 / 关键字) */
       flt: { schemeId: null, dataDate: '2025-12-31', keyword: '' },
       loading: false,
+      /** 编辑弹窗的表单数据 */
       dlg: this.initDlg()
     }
   },
@@ -309,6 +332,7 @@ export default {
     this.loadList()
   },
   methods: {
+    /** 返回新增/编辑对话框的默认值 (空表单) */
     initDlg() {
       return {
         show: false,
@@ -331,17 +355,34 @@ export default {
         status: 'ACTIVE'
       }
     },
+    /**
+     * <p>久期格式化 (空/NaN → "-", 否则保留 4 位小数 + " 年")</p>
+     *
+     * @param {number|string} v 久期原始值 (年)
+     * @returns {string} 格式化字符串
+     */
     fmtDuration(v) {
       if (v === null || v === undefined || v === '') return '-'
       const n = Number(v)
       if (isNaN(n)) return '-'
       return n.toFixed(4) + ' 年'
     },
+    /**
+     * <p>运算符映射为 Element UI tag 类型</p>
+     *
+     * @param {string} op 运算符 ('+' / '-' / 其他)
+     * @returns {string} tag 类型 (primary=蓝 / warning=橙 / info=灰)
+     */
     opColor(op) {
       if (op === '+') return 'primary'   // blue
       if (op === '-') return 'warning'   // orange
       return 'info'
     },
+    /**
+     * <p>加载下拉选项 (方案/节点/运算符/日期), 默认选 ZX_COA</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadOptions() {
       try {
         const opt = await request.get('/eve-param/options')
@@ -358,6 +399,11 @@ export default {
         this.$message.error('选项加载失败')
       }
     },
+    /**
+     * <p>按 flt 当前筛选条件加载列表</p>
+     *
+     * @returns {Promise<void>}
+     */
     async loadList() {
       this.loading = true
       try {
@@ -373,6 +419,7 @@ export default {
         this.loading = false
       }
     },
+    /** 重置筛选条件为默认 (ZX_COA + 2025-12-31 + 空关键字) */
     onReset() {
       const zxcoa = this.schemes.find(s => s.schemeCode === 'ZX_COA')
       this.flt.schemeId = zxcoa ? zxcoa.id : (this.schemes[0] ? this.schemes[0].id : null)
@@ -380,6 +427,12 @@ export default {
       this.flt.keyword = ''
       this.loadList()
     },
+    /**
+     * <p>对话框方案切换: 同步 schemeId/schemeCode 并清空节点</p>
+     *
+     * @param {number} v 选中的方案 ID
+     * @returns {void}
+     */
     onSchemeChange(v) {
       const sch = this.schemes.find(s => s.id === v)
       if (sch) {
@@ -391,6 +444,7 @@ export default {
       this.dlg.nodeCode = ''
       this.dlg.nodeName = ''
     },
+    /** 节点选择后自动回填编码/名称 */
     onNodeChange(v) {
       const sid = this.dlg.schemeId || this.flt.schemeId
       const nd = this.nodes.find(n => n.schemeId === sid && n.id === v)
@@ -399,6 +453,7 @@ export default {
         this.dlg.nodeName = nd.nodeName
       }
     },
+    /** 打开新增弹窗 (复用筛选条件预填方案/日期) */
     onAdd() {
       this.dlg = this.initDlg()
       const zxcoa = this.schemes.find(s => s.schemeCode === 'ZX_COA')
@@ -410,6 +465,12 @@ export default {
       this.dlg.dataDate = this.flt.dataDate || '2025-12-31'
       this.dlg.show = true
     },
+    /**
+     * <p>打开编辑弹窗, 用行数据回填表单</p>
+     *
+     * @param {Object} row 表格行 (含 id/schemeId/nodeId/isAsset/assetType/duration 等字段)
+     * @returns {void}
+     */
     onEdit(row) {
       this.dlg = {
         show: true,
@@ -432,9 +493,15 @@ export default {
         status: row.status || 'ACTIVE'
       }
     },
+    /** 对话框关闭清理 (重置 dlg) */
     onCloseDlg() {
       this.dlg = this.initDlg()
     },
+    /**
+     * <p>保存弹窗 (新增或更新), 带字段必填校验</p>
+     *
+     * @returns {Promise<void>}
+     */
     async onSave() {
       if (!this.dlg.schemeId) { this.$message.error('请选择账户册方案'); return }
       if (!this.dlg.dataDate) { this.$message.error('请选择数据日期'); return }
@@ -471,6 +538,12 @@ export default {
         this.$message.error(e.message || '保存失败')
       }
     },
+    /**
+     * <p>删除一条记录 (带 confirm 二次确认)</p>
+     *
+     * @param {Object} row 表格行 (含 id 字段)
+     * @returns {Promise<void>}
+     */
     async onDelete(row) {
       try {
         await this.$confirm('确定删除该条 EVE 参数？', '确认', { type: 'warning' })

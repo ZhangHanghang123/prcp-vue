@@ -229,6 +229,29 @@ import 'echarts/lib/component/title'
 import 'echarts/lib/component/markLine'
 import 'echarts/lib/component/visualMap'
 
+/**
+ * @file 反算驾驶舱面板 (reverse/Index.vue 的 Tab 3 子组件)
+ * @desc 嵌入 reverse/Index.vue 的「测算结果」Tab, 4 行布局:
+ *         1) Hero + 筛选条 (组合方案/运行/月份/运行摘要 tag)
+ *         2) 8 KPI 卡 (4 列 × 2 行: 资产/负债/贷款加权利率/ROE/CET1/LCR/NSFR/△EVE)
+ *         3) 双栏: 5 指标 24 月趋势 + 5 指标评分雷达
+ *         4) 双栏: Top 10 节点 + 大类分布 (环形 + 柱图)
+ *         5) 节点 × 指标 真热力图 (全宽)
+ *       直接调后端 /prcp-java/api/reverse-dashboard/{options,runs,dates,snapshot} 4 端点, 带 Bearer Token。
+ *
+ * @author zhanghh
+ * @since 2026-10-09
+ *
+ * 关联 API:
+ *   GET /prcp-java/api/reverse-dashboard/options?                              - 方案列表 + 默认值
+ *   GET /prcp-java/api/reverse-dashboard/runs?scheme_code=&                     - 运行列表
+ *   GET /prcp-java/api/reverse-dashboard/dates?scheme_code=&run_id=            - 月份列表
+ *   GET /prcp-java/api/reverse-dashboard/snapshot?scheme_code=&run_id=&date_offset= - 全量快照 (kpi/trend/top_nodes/risk_alerts/node_matrix/category_distribution/thresholds/kpi_scores)
+ *
+ * 关联组件: VChart (vue-echarts), echarts
+ * 关联路由: /reverse (group: 反算分析, 作为 Tab 3)
+ */
+
 // 调用 PRCP-Java 后端 /reverse-dashboard 4 端点
 async function rqOptions() { return (await fetch('/prcp-java/api/reverse-dashboard/options', { headers: tokenH() })).json() }
 async function rqRuns(sc) { return (await fetch('/prcp-java/api/reverse-dashboard/runs?scheme_code=' + encodeURIComponent(sc), { headers: tokenH() })).json() }
@@ -379,16 +402,19 @@ export default {
     if (this.heatmapChart) this.heatmapChart.dispose()
   },
   methods: {
+    /** 窗口 resize 时重渲染 radar + heatmap */
     onResize() {
       if (this.radarChart) this.radarChart.resize()
       if (this.heatmapChart) this.heatmapChart.resize()
     },
+    /** 重渲染所有图表 (radar + heatmap) */
     renderAll() {
       this.$nextTick(() => {
         this.renderRadar()
         this.renderHeatmap()
       })
     },
+    /** 加载方案下拉选项 (含默认值) */
     async loadOptions() {
       try {
         const r = await rqOptions()
@@ -402,6 +428,7 @@ export default {
         }
       } catch (e) { console.warn('options failed', e) }
     },
+    /** 加载当前方案下的运行列表 */
     async loadRuns() {
       if (!this.filter.schemeCode) { this.runs = []; return }
       try {
@@ -413,6 +440,7 @@ export default {
       } catch (e) { console.warn('runs failed', e) }
       await this.loadDates()
     },
+    /** 加载当前 run 的月份列表 */
     async loadDates() {
       if (!this.filter.schemeCode || !this.filter.runId) { this.dates = []; return }
       try {
@@ -425,6 +453,7 @@ export default {
         }
       } catch (e) { console.warn('dates failed', e) }
     },
+    /** 加载全量快照 (kpi/trend/top_nodes/risk_alerts/node_matrix/...) */
     async loadSnapshot() {
       if (!this.filter.schemeCode) return
       this.loading = true
@@ -441,14 +470,29 @@ export default {
       } catch (e) { console.warn('snapshot failed', e) }
       finally { this.loading = false }
     },
+    /** 方案切换 — 触发 loadRuns + loadSnapshot */
     onSchemeChange() { this.loadRuns().then(() => this.loadSnapshot()) },
+    /** 运行切换 — 触发 loadDates + loadSnapshot */
     onRunChange() { this.loadDates().then(() => this.loadSnapshot()) },
+    /** 月份切换 — 直接 reload snapshot */
     onDateChange() { this.loadSnapshot() },
 
+    /**
+     * <p>从 kpi.metric_avg 取某个指标均值</p>
+     *
+     * @param {string} k 指标 key (ROE/CET1/LCR/NSFR/DELTA_EVE)
+     * @returns {number} 平均值
+     */
     metricAvg(k) {
       const m = this.kpi.metric_avg || {}
       return m[k]
     },
+    /**
+     * <p>根据阈值判断指标趋势 (up/down/flat)</p>
+     *
+     * @param {string} k 指标 key
+     * @returns {string} 'up' | 'down' | 'flat'
+     */
     metricTrend(k) {
       const v = Number(this.metricAvg(k))
       if (isNaN(v) || v === null) return 'flat'
@@ -459,6 +503,12 @@ export default {
       }
       return 'flat'
     },
+    /**
+     * <p>金额格式化 (元/万/亿, 自动切换单位)</p>
+     *
+     * @param {number} v 金额 (元)
+     * @returns {string} 格式化字符串
+     */
     fmtMoney(v) {
       if (v == null) return '-'
       const a = Math.abs(Number(v))
@@ -466,23 +516,49 @@ export default {
       if (a >= 1e4) return (v / 1e4).toFixed(2) + ' 万'
       return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
     },
+    /**
+     * <p>EVE 金额格式化 (固定保留 2 位小数 + "亿" 单位, 已在 snapshot 中是亿元)</p>
+     *
+     * @param {number} v EVE 数值 (亿元)
+     * @returns {string} 格式化字符串
+     */
     fmtMoneyEve(v) {
       if (v == null) return '-'
       return Number(v).toFixed(2)
     },
+    /**
+     * <p>数值 → 百分比显示 (NaN/空 → '-')</p>
+     *
+     * @param {number} v 原始数值
+     * @param {number} [digits=2] 小数位数
+     * @returns {string} 百分比字符串
+     */
     pctOrDash(v, digits = 2) {
       if (v == null) return '-'
       const n = Number(v)
       if (isNaN(n)) return '-'
       return n.toFixed(digits) + '%'
     },
+    /**
+     * <p>大类 key → 中文标签</p>
+     *
+     * @param {string} c 大类 key
+     * @returns {string} 中文标签
+     */
     catLabel(c) {
       return ({ ASSET: '资产', LIABILITY: '负债', EQUITY: '权益', OFF_BALANCE: '表外', OTHER: '其他' })[c] || (c || '-')
     },
+    /**
+     * <p>大类 key → Element UI tag 类型</p>
+     *
+     * @param {string} c 大类 key
+     * @returns {string} tag 类型
+     */
     catTagType(c) {
       return ({ ASSET: 'success', LIABILITY: 'warning', EQUITY: 'info', OFF_BALANCE: '', OTHER: 'danger' })[c] || ''
     },
 
+    /** 渲染 5 指标评分雷达 (ROE/CET1/LCR/NSFR/△EVE) */
     renderRadar() {
       if (!this.$refs.radarChart) return
       if (!this.radarChart) this.radarChart = echarts.init(this.$refs.radarChart)
@@ -518,6 +594,7 @@ export default {
       }, true)
     },
 
+    /** 渲染节点 × 指标 热力图 (按 heatmapCategory + heatmapMetric 过滤, 取 abs top 50) */
     renderHeatmap() {
       if (!this.$refs.heatmapChart) return
       if (!this.heatmapChart) this.heatmapChart = echarts.init(this.$refs.heatmapChart)
@@ -578,7 +655,9 @@ export default {
       }, true)
     },
 
+    /** 导出当前快照 (开发中) */
     exportSnapshot() { this.$message.info('导出快照功能开发中…') },
+    /** 导出当前趋势 (开发中) */
     exportTrend() { this.$message.info('导出趋势功能开发中…') }
   }
 }
