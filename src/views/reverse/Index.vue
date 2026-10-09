@@ -620,6 +620,10 @@ export default {
     /**
      * <p>为方案直接运行 (绕过目标设置, 跳到运行记录 tab)</p>
      *
+     * <p>当前流程 (进程内): createRun → startRun → 后端 EXEC 线程池同步求解</p>
+     * <p>改造目标 (外部引擎): createRun → 后端组装报文 POST 到独立引擎服务 → 引擎异步回调结果</p>
+     * <p>详见后端接口文档: {@code docs/api/reverse-engine-api.md}</p>
+     *
      * @param {Object} row 方案行
      * @returns {Promise<void>}
      */
