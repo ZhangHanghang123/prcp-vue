@@ -136,7 +136,14 @@
                   </div>
                   <div>
                     <el-button icon="el-icon-refresh" size="small" @click="loadRules">刷新</el-button>
-                    <el-button type="danger" icon="el-icon-plus" size="small" @click="onAddRule">新增规则</el-button>
+                    <el-tooltip content="新增分段评分规则（按 min/max 区间 → 分数）" placement="top">
+                      <el-button type="danger" icon="el-icon-plus" size="small" @click="onAddRule">新增规则</el-button>
+                    </el-tooltip>
+                    <el-tooltip content="新增线性插值评分规则（多个 (x, score) 锚点，按段间线性插值）" placement="top">
+                      <el-button type="primary" plain icon="el-icon-plus" size="small"
+                                 style="background:#e6f4ff;border-color:#91caff;color:#1677ff"
+                                 @click="onAddLinearRule">新增线性规则</el-button>
+                    </el-tooltip>
                   </div>
                 </div>
 
@@ -146,16 +153,28 @@
                     <template #default="{ row }">
                       <div class="seg-panel">
                         <div class="seg-panel-title">
-                          <i class="el-icon-data-line"></i>
-                          评分段（{{ (row.segments || []).length }} 段）
+                          <i :class="row.calcMethod === 'LINEAR' ? 'el-icon-data-line' : 'el-icon-s-data'"></i>
+                          <template v-if="row.calcMethod === 'LINEAR'">⚓ 锚点（线性插值）</template>
+                          <template v-else>📊 评分段（区间命中）</template>
+                          （{{ (row.segments || []).length }} {{ row.calcMethod === 'LINEAR' ? '锚点' : '段' }}）
                         </div>
-                        <el-tag v-for="(s, i) in (row.segments || [])" :key="s.id || i" class="seg-tag" effect="plain">
-                          <span class="seg-range">
-                            {{ s.minValue != null ? '≥ ' + s.minValue : '−∞' }} ~ {{ s.maxValue != null ? '< ' + s.maxValue : '+∞' }}
-                          </span>
-                          <span class="seg-arrow">→</span>
-                          <span class="seg-score">{{ s.score }} 分</span>
-                          <span v-if="s.segmentDesc" class="seg-desc">· {{ s.segmentDesc }}</span>
+                        <el-tag v-for="(s, i) in (row.segments || [])" :key="s.id || i"
+                                :type="row.calcMethod === 'LINEAR' ? 'primary' : 'plain'"
+                                class="seg-tag" effect="plain">
+                          <template v-if="row.calcMethod === 'LINEAR'">
+                            <span class="seg-range">x = <strong>{{ s.minValue != null ? s.minValue : s.maxValue }}</strong></span>
+                            <span class="seg-arrow">→</span>
+                            <span class="seg-score"><strong>{{ s.score }}</strong> 分</span>
+                            <span v-if="s.segmentDesc" class="seg-desc">· {{ s.segmentDesc }}</span>
+                          </template>
+                          <template v-else>
+                            <span class="seg-range">
+                              {{ s.minValue != null ? '≥ ' + s.minValue : '−∞' }} ~ {{ s.maxValue != null ? '< ' + s.maxValue : '+∞' }}
+                            </span>
+                            <span class="seg-arrow">→</span>
+                            <span class="seg-score">{{ s.score }} 分</span>
+                            <span v-if="s.segmentDesc" class="seg-desc">· {{ s.segmentDesc }}</span>
+                          </template>
                         </el-tag>
                         <div v-if="!((row.segments || []).length)" class="empty-tip">暂无评分段</div>
                       </div>
@@ -164,6 +183,14 @@
                   <el-table-column prop="ruleName" label="规则名称" min-width="200">
                     <template #default="{ row }">
                       <strong>{{ row.ruleName }}</strong>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="算法" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag size="mini" :type="row.calcMethod === 'LINEAR' ? 'primary' : 'info'">
+                        <i :class="row.calcMethod === 'LINEAR' ? 'el-icon-data-line' : 'el-icon-s-data'" style="margin-right:2px"></i>
+                        {{ row.calcMethod === 'LINEAR' ? '📈 线性' : '🔢 分段' }}
+                      </el-tag>
                     </template>
                   </el-table-column>
                   <el-table-column prop="totalScore" label="总分" width="80" align="right">
@@ -294,39 +321,67 @@
           </el-select>
         </el-form-item>
 
-        <!-- 评分段（内联可编辑表） -->
+        <!-- 评分段（内联可编辑表 — PIECEWISE 区间 / LINEAR 锚点 两种结构） -->
         <div class="seg-block">
           <div class="seg-block-header">
-            <span><i class="el-icon-data-line"></i> 评分段（按指标值区间 → 分数）</span>
-            <el-button type="text" icon="el-icon-plus" size="mini" @click="addSegment">添加段</el-button>
+            <span>
+              <i :class="ruleForm.calcMethod === 'LINEAR' ? 'el-icon-data-line' : 'el-icon-s-data'"></i>
+              <template v-if="ruleForm.calcMethod === 'LINEAR'">⚓ 线性锚点（min_value = 输入值，score = 该点的得分）</template>
+              <template v-else>📊 评分段（按指标值区间 → 分数）</template>
+            </span>
+            <el-button type="text" icon="el-icon-plus" size="mini" @click="addSegment">
+              {{ ruleForm.calcMethod === 'LINEAR' ? '添加锚点' : '添加段' }}
+            </el-button>
           </div>
           <div class="seg-block-tip">
-            💡 提示：每段填写 <b>最小值 ≥</b>（含）和 <b>最大值 &lt;</b>（不含）。两端可留空表示 -∞ 或 +∞。
+            <template v-if="ruleForm.calcMethod === 'LINEAR'">
+              💡 提示：每行是一个<b>锚点</b>。<strong>最小值</strong> = 指标值 x，<strong>分数</strong> = 该点的得分。
+              锚点之间按 x 轴线性插值；输入值超出区间则按端点 clamp（取最近锚点分数）。
+            </template>
+            <template v-else>
+              💡 提示：每段填写 <b>最小值 ≥</b>（含）和 <b>最大值 &lt;</b>（不含）。两端可留空表示 -∞ 或 +∞。
+            </template>
           </div>
           <el-table :data="ruleForm.segments" border size="mini" style="width:100%">
             <el-table-column label="序号" width="60" align="center">
-              <template #default="{ row, $index }">
+              <template #default="{ row }">
                 <el-input-number v-model="row.seg_order" :min="1" :max="99" size="mini" controls-position="right" style="width:100%" />
               </template>
             </el-table-column>
-            <el-table-column label="最小值 ≥" width="110">
-              <template #default="{ row }">
-                <el-input-number v-model="row.min_value" :precision="6" placeholder="-∞" size="mini" controls-position="right" style="width:100%" />
-              </template>
-            </el-table-column>
-            <el-table-column label="最大值 &lt;" width="110">
-              <template #default="{ row }">
-                <el-input-number v-model="row.max_value" :precision="6" placeholder="+∞" size="mini" controls-position="right" style="width:100%" />
-              </template>
-            </el-table-column>
-            <el-table-column label="分数" width="90">
-              <template #default="{ row }">
-                <el-input-number v-model="row.score" :min="0" :precision="4" size="mini" controls-position="right" style="width:100%" />
-              </template>
-            </el-table-column>
+            <!-- LINEAR 模式：只显示锚点 x 和 score -->
+            <template v-if="ruleForm.calcMethod === 'LINEAR'">
+              <el-table-column label="锚点 x (指标值)" width="160">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.min_value" :precision="6" placeholder="如：8" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+              <el-table-column label="锚点 score" width="120">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.score" :min="0" :max="999" :precision="4" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+            </template>
+            <!-- PIECEWISE 模式：显示 min/max/score -->
+            <template v-else>
+              <el-table-column label="最小值 ≥" width="110">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.min_value" :precision="6" placeholder="-∞" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+              <el-table-column label="最大值 &lt;" width="110">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.max_value" :precision="6" placeholder="+∞" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+              <el-table-column label="分数" width="90">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.score" :min="0" :precision="4" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+            </template>
             <el-table-column label="描述">
               <template #default="{ row }">
-                <el-input v-model="row.segment_desc" placeholder="如：优秀 / 及格 / 不及格" size="mini" />
+                <el-input v-model="row.segment_desc" :placeholder="ruleForm.calcMethod === 'LINEAR' ? '如：监管底线 8% → 60 分' : '如：优秀 / 及格 / 不及格'" size="mini" />
               </template>
             </el-table-column>
             <el-table-column label="操作" width="60" align="center">
@@ -375,11 +430,17 @@
 import { kpiApi } from '@/api/kpi'
 
 /**
- * @file 指标管理 (KPI 评分)
- * @desc 指标方案 + 指标定义 + 评分规则 (分段) 三层结构。包含 3 个 Tab:
+ * @file 指标管理 (KPI 评分 — PIECEWISE 分段 + LINEAR 线性插值)
+ * @desc 指标方案 + 指标定义 + 评分规则 三层结构。包含 3 个 Tab:
  *         1) 指标方案 - 方案 CRUD, 含状态 ACTIVE/INACTIVE
  *         2) 指标定义 - 当前方案下的指标列表 (编码/名称/单位/公式/阈值)
- *         3) 指标评分 - 左栏指标卡片 + 右栏规则列表 (内嵌评分段 tag)
+ *         3) 指标评分 - 左栏指标卡片 + 右栏规则列表 (含 评分段/锚点 tag)
+ *
+ *       评分规则支持 2 种计算方法 (calc_method):
+ *       - PIECEWISE 分段: 每段 [min, max) 区间, 命中区间直接取该段 score
+ *       - LINEAR  线性:   每段是一个锚点 (min_value=x, score=y), 段之间按 x 轴线性插值;
+ *                          输入值超出区间则按端点 clamp (取最近锚点分数)
+ *
  *       全局联动 currentSchemeId, 切换后自动加载指标定义和评分规则。
  *
  * @author zhanghh
@@ -396,9 +457,10 @@ import { kpiApi } from '@/api/kpi'
  *   PUT    /kpi/def/{id}          - 更新指标
  *   DELETE /kpi/def/{id}          - 删除指标
  *   GET    /kpi/score-rule?scheme_id= - 当前方案的评分规则列表 (含内嵌 segments)
- *   POST   /kpi/score-rule        - 新建评分规则
+ *   POST   /kpi/score-rule        - 新建评分规则 (含 calc_method)
  *   PUT    /kpi/score-rule/{id}   - 更新评分规则
  *   DELETE /kpi/score-rule/{id}   - 删除评分规则 (级联 segments)
+ *   POST   /kpi/score-calc        - 按规则 + 指标值算分 (支持 PIECEWISE/LINEAR)
  *
  * 关联组件: 无
  * 关联路由: /kpi (group: 指标管理)
@@ -627,7 +689,7 @@ export default {
     },
 
     // ===== 评分规则 =====
-    /** 打开新增评分规则弹窗 (默认 3 段模板: <9/9-11/>=11) */
+    /** 打开新增评分规则弹窗 (默认 PIECEWISE + 3 段模板: <9 / 9-11 / >=11) */
     onAddRule() {
       this.editingRule = null
       this.ruleForm = {
@@ -643,6 +705,25 @@ export default {
           { seg_order: 1, min_value: null, max_value: 9, score: 60, segment_desc: '不及格' },
           { seg_order: 2, min_value: 9, max_value: 11, score: 80, segment_desc: '及格' },
           { seg_order: 3, min_value: 11, max_value: null, score: 100, segment_desc: '优秀' }
+        ]
+      }
+      this.ruleModalVisible = true
+    },
+    /** 打开新增 LINEAR 评分规则弹窗 (默认 2 个锚点: x=8→60 / x=15→100) */
+    onAddLinearRule() {
+      this.editingRule = null
+      this.ruleForm = {
+        kpiId: this.selectedDefId || null,
+        ruleName: '',
+        schemeId: this.currentSchemeId,
+        totalScore: 100,
+        higherIsBetter: 1,
+        calcMethod: 'LINEAR',
+        status: 'ACTIVE',
+        description: '',
+        segments: [
+          { seg_order: 1, min_value: 8,  max_value: null, score: 60,  segment_desc: '监管底线' },
+          { seg_order: 2, min_value: 15, max_value: null, score: 100, segment_desc: '优秀' }
         ]
       }
       this.ruleModalVisible = true
@@ -676,14 +757,17 @@ export default {
       }
       this.ruleModalVisible = true
     },
-    /** 在 ruleForm.segments 末尾追加一个空段 */
+    /** 在 ruleForm.segments 末尾追加一个空段 (LINEAR 锚点或 PIECEWISE 区间段) */
     addSegment() {
       const next = (this.ruleForm.segments || [])
+      const isLinear = this.ruleForm.calcMethod === 'LINEAR'
+      // LINEAR 锚点建议：min_value 默认比上一个锚点大 1 (避免重复锚点)
+      const lastAnchor = isLinear && next.length ? Number(next[next.length - 1].min_value || 0) : null
       this.ruleForm.segments = [
         ...next,
         {
           seg_order: next.length + 1,
-          min_value: null,
+          min_value: isLinear && lastAnchor != null ? lastAnchor + 1 : null,
           max_value: null,
           score: 0,
           segment_desc: ''
