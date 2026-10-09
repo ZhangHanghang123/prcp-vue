@@ -138,7 +138,7 @@ export default {
           title: '反算分析',
           icon: 'el-icon-data-analysis',
           children: [
-            { path: '/reverse',               title: '组合反算',       icon: 'el-icon-position' },
+            { path: '/reverse',               title: '测算方案',       icon: 'el-icon-position' },
             { path: '/reverse-dashboard',     title: '反算 Dashboard', icon: 'el-icon-data-analysis' },
             { path: '/reverse-metric-table',  title: '反算指标结果表', icon: 'el-icon-tickets' },
             { path: '/reverse-result',        title: '反算结果查询',   icon: 'el-icon-search' },

@@ -17,7 +17,7 @@ const routes = [
     children: [
       // ===== 一级：工作台（驾驶舱内容已合并进 reverse/测算结果页签） =====
       // 原 /dashboard 路由已移除；驾驶舱组件以 reverse/components/DashboardPanels.vue 形式承载
-      // 入口在组合反算 → 测算结果 页签下
+      // 入口在测算方案 → 测算结果 页签下
       // 兼容旧 /dashboard URL：重定向到 /coa（避免空白页）
       {
         path: 'dashboard',
@@ -129,7 +129,7 @@ const routes = [
         path: 'reverse',
         name: 'Reverse',
         component: () => import('@/views/reverse/Index.vue'),
-        meta: { title: '组合反算', icon: 'el-icon-position', group: '反算分析' }
+        meta: { title: '测算方案', icon: 'el-icon-position', group: '反算分析' }
       },
       {
         path: 'reverse-dashboard',
