@@ -18,6 +18,13 @@
           <el-table-column prop="schemeName" label="名称" min-width="200" />
           <el-table-column prop="coaName" label="关联账户册" width="200" show-overflow-tooltip />
           <el-table-column prop="modelName" label="计量模型" width="160" show-overflow-tooltip />
+          <el-table-column prop="dataDate" label="数据日期" width="120">
+            <template slot-scope="s">
+              <el-tag size="mini" effect="plain">
+                <i class="el-icon-date" style="margin-right:4px"></i>{{ s.row.dataDate || s.row.data_date || '-' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="horizonMonths" label="预测期" width="90" />
           <el-table-column prop="runCount" label="运行数" width="80" />
           <el-table-column prop="status" label="状态" width="90">
