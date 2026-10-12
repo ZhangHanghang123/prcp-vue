@@ -563,23 +563,32 @@ export default {
       if (!this.$refs.radarChart) return
       if (!this.radarChart) this.radarChart = echarts.init(this.$refs.radarChart)
       const scores = this.snapshot.kpi_scores || []
-      // 取 5 个 REG_* 指标的 score（0-100）
+      // 取 5 个 REG_* 指标的 score
+      // 🆕 分数制已切换到 0-500 (v12b 评分规则), 雷达 max 跟随
+      const MAX_SCORE = 500
       const labels = ['ROE', 'CET1', 'LCR', 'NSFR', '△EVE']
       const values = labels.map(k => {
         const s = scores.find(x => (x && x.kpi_code || '').endsWith(k.replace('△EVE', 'DELTA_EVE')))
-        return s && s.score != null ? s.score : 0
+        return s && s.score != null ? Number(s.score) : 0
       })
       this.radarChart.setOption({
-        tooltip: { trigger: 'item' },
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => {
+            const lines = p.value.map((v, i) => `${labels[i]}: <b>${v.toFixed(0)}</b> / ${MAX_SCORE}`)
+            return lines.join('<br/>')
+          }
+        },
         radar: {
-          indicator: labels.map(k => ({ name: k, max: 100 })),
+          indicator: labels.map(k => ({ name: k, max: MAX_SCORE })),
           shape: 'polygon',
-          radius: '60%',
+          radius: '62%',
           center: ['50%', '52%'],
-          splitNumber: 4,
-          axisName: { color: '#25334B', fontSize: 11 },
-          splitArea: { areaStyle: { color: ['rgba(11, 111, 242, 0.04)', 'rgba(11, 111, 242, 0.08)'] } },
-          splitLine: { lineStyle: { color: '#D9E5F7' } }
+          splitNumber: 5,                                       // 5 段 (0/100/200/300/400/500)
+          axisName: { color: '#25334B', fontSize: 11, fontWeight: 600 },
+          splitArea: { areaStyle: { color: ['rgba(11, 111, 242, 0.04)', 'rgba(11, 111, 242, 0.10)'] } },
+          splitLine: { lineStyle: { color: '#D9E5F7' } },
+          axisLine: { lineStyle: { color: '#C8D5EC' } }
         },
         series: [{
           type: 'radar',
