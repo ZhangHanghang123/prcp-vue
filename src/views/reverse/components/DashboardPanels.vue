@@ -95,8 +95,11 @@
       <div class="kpi-card">
         <div class="kpi-label"><i class="el-icon-data-line"></i> ROE 净资产收益率</div>
         <div class="kpi-value-wrap">
-          <i v-if="metricTrend('ROE')==='down'" class="trend-icon trend-down">↓</i>
-          <i v-else-if="metricTrend('ROE')==='up'" class="trend-icon trend-up">↑</i>
+          <span class="trend-icon-wrap" :class="metricTrend('ROE')">
+            <i v-if="metricTrend('ROE')==='down'" class="trend-icon trend-down">↓</i>
+            <i v-else-if="metricTrend('ROE')==='up'" class="trend-icon trend-up">↑</i>
+            <span v-if="metricTrend('ROE')!=='flat'" class="trend-pct">{{ metricTrendPct('ROE') }}</span>
+          </span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('ROE')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.ROE?.min || 11 }}%</div>
@@ -105,8 +108,11 @@
       <div class="kpi-card">
         <div class="kpi-label"><i class="el-icon-medal"></i> CET1 核心一级</div>
         <div class="kpi-value-wrap">
-          <i v-if="metricTrend('CET1')==='down'" class="trend-icon trend-down">↓</i>
-          <i v-else-if="metricTrend('CET1')==='up'" class="trend-icon trend-up">↑</i>
+          <span class="trend-icon-wrap" :class="metricTrend('CET1')">
+            <i v-if="metricTrend('CET1')==='down'" class="trend-icon trend-down">↓</i>
+            <i v-else-if="metricTrend('CET1')==='up'" class="trend-icon trend-up">↑</i>
+            <span v-if="metricTrend('CET1')!=='flat'" class="trend-pct">{{ metricTrendPct('CET1') }}</span>
+          </span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('CET1')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.CET1?.min || 8.5 }}%</div>
@@ -115,8 +121,11 @@
       <div class="kpi-card">
         <div class="kpi-label"><i class="el-icon-tickets"></i> LCR 流动性覆盖率</div>
         <div class="kpi-value-wrap">
-          <i v-if="metricTrend('LCR')==='down'" class="trend-icon trend-down">↓</i>
-          <i v-else-if="metricTrend('LCR')==='up'" class="trend-icon trend-up">↑</i>
+          <span class="trend-icon-wrap" :class="metricTrend('LCR')">
+            <i v-if="metricTrend('LCR')==='down'" class="trend-icon trend-down">↓</i>
+            <i v-else-if="metricTrend('LCR')==='up'" class="trend-icon trend-up">↑</i>
+            <span v-if="metricTrend('LCR')!=='flat'" class="trend-pct">{{ metricTrendPct('LCR') }}</span>
+          </span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('LCR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.LCR?.min || 100 }}%</div>
@@ -125,8 +134,11 @@
       <div class="kpi-card">
         <div class="kpi-label"><i class="el-icon-files"></i> NSFR 净稳定资金</div>
         <div class="kpi-value-wrap">
-          <i v-if="metricTrend('NSFR')==='down'" class="trend-icon trend-down">↓</i>
-          <i v-else-if="metricTrend('NSFR')==='up'" class="trend-icon trend-up">↑</i>
+          <span class="trend-icon-wrap" :class="metricTrend('NSFR')">
+            <i v-if="metricTrend('NSFR')==='down'" class="trend-icon trend-down">↓</i>
+            <i v-else-if="metricTrend('NSFR')==='up'" class="trend-icon trend-up">↑</i>
+            <span v-if="metricTrend('NSFR')!=='flat'" class="trend-pct">{{ metricTrendPct('NSFR') }}</span>
+          </span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('NSFR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.NSFR?.min || 100 }}%</div>
@@ -488,20 +500,44 @@ export default {
       return m[k]
     },
     /**
-     * <p>根据阈值判断指标趋势 (up/down/flat)</p>
+     * <p>判断指标趋势 (up/down/flat) — 对比基期 M0 (trend[0]) vs 当前 (trend[end])</p>
      *
-     * @param {string} k 指标 key
+     * <p>原系统对齐: 不与阈值比较, 而是与基期余额比较, 看"从起点到现在"是涨是跌
+     * - 涨 → up (绿色 ↑)
+     * - 跌 → down (红色 ↓)
+     * - 平 → flat (灰色 —)
+     * </p>
+     *
+     * @param {string} k 指标 key (ROE/CET1/LCR/NSFR)
      * @returns {string} 'up' | 'down' | 'flat'
      */
     metricTrend(k) {
-      const v = Number(this.metricAvg(k))
-      if (isNaN(v) || v === null) return 'flat'
-      const thr = this.thresholds[k]
-      if (!thr) return 'flat'
-      if (thr.direction === 'down') {
-        return v >= (thr.min || 0) ? 'up' : 'down'
-      }
-      return 'flat'
+      const series = (this.snapshot && this.snapshot.trend && this.snapshot.trend[k]) || []
+      if (!series || series.length < 2) return 'flat'
+      const first = Number(series[0])
+      const last = Number(series[series.length - 1])
+      if (isNaN(first) || isNaN(last) || first === 0) return 'flat'
+      const diff = last - first
+      const ratio = Math.abs(diff / first)
+      // 涨跌幅 < 0.1% 视为持平
+      if (ratio < 0.001) return 'flat'
+      return diff > 0 ? 'up' : 'down'
+    },
+    /**
+     * <p>从基期到当前的涨跌幅 (百分数, 用于箭头后显示)</p>
+     *
+     * @param {string} k 指标 key
+     * @returns {string} e.g. '+1.5%' / '-0.3%'
+     */
+    metricTrendPct(k) {
+      const series = (this.snapshot && this.snapshot.trend && this.snapshot.trend[k]) || []
+      if (!series || series.length < 2) return ''
+      const first = Number(series[0])
+      const last = Number(series[series.length - 1])
+      if (isNaN(first) || isNaN(last) || first === 0) return ''
+      const diff = ((last - first) / first) * 100
+      const sign = diff > 0 ? '+' : ''
+      return sign + diff.toFixed(1) + '%'
     },
     /**
      * <p>金额格式化 (元/万/亿, 自动切换单位)</p>
@@ -789,6 +825,33 @@ export default {
 .trend-icon { font-size: 14px; margin-right: 2px; }
 .trend-up { color: #0B6FF2; }
 .trend-down { color: #C9332B; }
+
+/* 🆕 趋势图标容器: 大号 + 加粗 + 与数值区对齐 */
+.trend-icon-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  margin-right: 6px;
+  font-weight: 700;                                      /* 加粗明细 */
+}
+.trend-icon-wrap .trend-icon {
+  font-size: 22px;                                       /* 14 -> 22 (大号) */
+  font-weight: 800;                                      /* 特粗 */
+  margin-right: 2px;
+  line-height: 1;
+}
+.trend-icon-wrap .trend-pct {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 2px;
+  opacity: 0.85;
+}
+/* 重新定义颜色: ↑ 绿色, ↓ 红色 (对齐原系统 480+ 绿色 / 0 红色 评分配色) */
+.trend-icon-wrap.up .trend-icon,
+.trend-icon-wrap.up .trend-pct { color: #67C23A; }      /* 绿: Element UI success */
+.trend-icon-wrap.down .trend-icon,
+.trend-icon-wrap.down .trend-pct { color: #F56C6C; }    /* 红: Element UI danger */
+.trend-icon-wrap.flat .trend-icon,
+.trend-icon-wrap.flat .trend-pct { color: #909399; }    /* 灰: Element UI info */
 .radar-area { width: 100%; height: 200px; }
 .radar-area-large { width: 100%; height: 340px; }
 
