@@ -565,10 +565,20 @@ export default {
       const scores = this.snapshot.kpi_scores || []
       // 取 5 个 REG_* 指标的 score
       // 🆕 分数制已切换到 0-500 (v12b 评分规则), 雷达 max 跟随
+      // 🆕 修复: DB 里 EVE 的 kpi_code 是 'REG_EVE' (不是 'REG_DELTA_EVE'), 用显式映射代替 endsWith
       const MAX_SCORE = 500
-      const labels = ['ROE', 'CET1', 'LCR', 'NSFR', '△EVE']
-      const values = labels.map(k => {
-        const s = scores.find(x => (x && x.kpi_code || '').endsWith(k.replace('△EVE', 'DELTA_EVE')))
+      // label -> kpi_code 后缀 (直接对应 prcp_kpi_definition.kpi_code 去掉 'REG_' 前缀)
+      const LABEL_TO_KPI = {
+        'ROE':   'ROE',
+        'CET1':  'CET1',
+        'LCR':   'LCR',
+        'NSFR':  'NSFR',
+        '△EVE':  'EVE'         // 关键: DB 存的是 'EVE', 不是 'DELTA_EVE'
+      }
+      const labels = Object.keys(LABEL_TO_KPI)
+      const values = labels.map(label => {
+        const suffix = LABEL_TO_KPI[label]
+        const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
         return s && s.score != null ? Number(s.score) : 0
       })
       this.radarChart.setOption({
