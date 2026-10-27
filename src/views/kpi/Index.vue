@@ -172,7 +172,12 @@
                               {{ s.minValue != null ? '≥ ' + s.minValue : '−∞' }} ~ {{ s.maxValue != null ? '< ' + s.maxValue : '+∞' }}
                             </span>
                             <span class="seg-arrow">→</span>
-                            <span class="seg-score">{{ s.score }} 分</span>
+                            <!-- 🆕 v2.4: 启用段内插值时显示 score_min ~ score -->
+                            <span v-if="s.scoreMin != null" class="seg-score">{{ s.scoreMin }} ~ {{ s.score }} 分</span>
+                            <span v-else class="seg-score">{{ s.score }} 分</span>
+                            <!-- 🆕 [插值] 标记 -->
+                            <el-tag v-if="s.scoreMin != null" size="mini" type="warning" effect="plain"
+                                    class="seg-interp-tag">插值</el-tag>
                             <span v-if="s.segmentDesc" class="seg-desc">· {{ s.segmentDesc }}</span>
                           </template>
                         </el-tag>
@@ -343,7 +348,10 @@
               锚点之间按 x 轴线性插值；输入值超出区间则按端点 clamp（取最近锚点分数）。
             </template>
             <template v-else>
-              💡 提示：每段填写 <b>最小值 ≥</b>（含）和 <b>最大值 &lt;</b>（不含）。两端可留空表示 -∞ 或 +∞。
+              💡 提示：每段填写 <b>最小值 ≥</b>（含）和 <b>最大值 &lt;</b>（不含）。两端可留空表示 -∞ 或 +∞。<br/>
+              <b>最小值分数</b>填该段下界的得分，<b>最大值分数</b>填该段上界的得分 ——
+              两端都填写时段内按线性插值（如 [0,10] → 60→100 分，输入 5 得 80 分）；
+              只填最大值分数则为阶梯评分（命中即取该分）。
             </template>
           </div>
           <el-table :data="ruleForm.segments" border size="mini" style="width:100%">
@@ -365,7 +373,7 @@
                 </template>
               </el-table-column>
             </template>
-            <!-- PIECEWISE 模式：显示 min/max/score -->
+            <!-- PIECEWISE 模式：显示 min/max/最小值分数/最大值分数 -->
             <template v-else>
               <el-table-column label="最小值 ≥" width="110">
                 <template #default="{ row }">
@@ -377,7 +385,12 @@
                   <el-input-number v-model="row.max_value" :precision="6" placeholder="+∞" size="mini" controls-position="right" style="width:100%" />
                 </template>
               </el-table-column>
-              <el-table-column label="分数" width="90">
+              <el-table-column label="最小值分数" width="110">
+                <template #default="{ row }">
+                  <el-input-number v-model="row.score_min" :min="0" :precision="4" placeholder="阶梯" size="mini" controls-position="right" style="width:100%" />
+                </template>
+              </el-table-column>
+              <el-table-column label="最大值分数" width="110">
                 <template #default="{ row }">
                   <el-input-number v-model="row.score" :min="0" :precision="4" size="mini" controls-position="right" style="width:100%" />
                 </template>
@@ -756,6 +769,8 @@ export default {
           min_value: s.minValue != null ? Number(s.minValue) : (s.min_value != null ? Number(s.min_value) : null),
           max_value: s.maxValue != null ? Number(s.maxValue) : (s.max_value != null ? Number(s.max_value) : null),
           score: s.score != null ? Number(s.score) : 0,
+          // 🆕 v2.4 段内插值下界分 (null = 阶梯评分)
+          score_min: s.scoreMin != null ? Number(s.scoreMin) : (s.score_min != null ? Number(s.score_min) : null),
           segment_desc: s.segmentDesc || s.segment_desc || ''
         }))
       }
@@ -774,6 +789,7 @@ export default {
           min_value: isLinear && lastAnchor != null ? lastAnchor + 1 : null,
           max_value: null,
           score: 0,
+          score_min: null,        // 🆕 默认不启用段内插值 (阶梯)
           segment_desc: ''
         }
       ]
@@ -821,6 +837,7 @@ export default {
             min_value: s.min_value,
             max_value: s.max_value,
             score: s.score,
+            score_min: s.score_min,     // 🆕 v2.4 段内插值下界分 (null = 阶梯)
             segment_desc: s.segment_desc || ''
           }))
         }
@@ -968,6 +985,8 @@ export default {
 .seg-arrow { color:#0B6FF2; margin: 0 4px; }
 .seg-score { color:#0B6FF2; font-weight:600; }
 .seg-desc { color:#888; margin-left:4px; }
+/* 🆕 v2.4 [插值] 标记 */
+.seg-interp-tag { margin-left:4px; font-size:11px; padding:0 4px; height:18px; line-height:16px; }
 
 /* ===== 评分段内联编辑表（弹窗内） ===== */
 .seg-block { margin-top: 4px; padding: 8px 0 0; border-top: 1px dashed #E5E7EB; }

@@ -22,10 +22,14 @@ export const simApi = {
 
   /**
    * <p>查询某账户册方案的节点树</p>
+   * <p>🆕 v2.4: 传 simSchemeId 时, 每个节点带 has_config 标记 (该节点在方案下是否已配置)</p>
    * @param {number|string} coaSchemeId - 账户册方案 ID
-   * @returns {Promise<Array>} 节点树
+   * @param {number|string} [simSchemeId] - 模拟方案 ID (可选, 用于「已配置」标绿)
+   * @returns {Promise<Object>} { scheme_id, items, total }
    */
-  coaTree: (coaSchemeId) => request.get('/sim/coa-tree', { params: { coa_scheme_id: coaSchemeId } }),
+  coaTree: (coaSchemeId, simSchemeId) => request.get('/sim/coa-tree', {
+    params: { coa_scheme_id: coaSchemeId, sim_scheme_id: simSchemeId || undefined }
+  }),
 
   /**
    * <p>查询模拟方案树 (方案×节点的虚拟配置)</p>
@@ -152,5 +156,53 @@ export const simApi = {
    * @param {number|string} rid - 期限占比记录 ID
    * @returns {Promise<void>}
    */
-  deleteTermRatio: (rid) => request.delete('/sim/term-ratios/' + rid)
+  deleteTermRatio: (rid) => request.delete('/sim/term-ratios/' + rid),
+
+  // ========== 🆕 v2.1: 12 个月节奏配置 (prcp_sim_rhythm) ==========
+
+  /**
+   * <p>取 12 个月节奏权重 (无数据 → 默认线性 8.3333%)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @returns {Promise<Object>} { config_id, weights:[{month_no, month_label, weight, remark}], total }
+   */
+  getRhythm: (cfgId) => request.get('/sim/rhythm/' + cfgId),
+
+  /**
+   * <p>保存 12 个月节奏权重 (整段替换, 必须满 12 个月且和为 100%)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @param {Object} data - { weights: [{month_no, weight, remark}] }
+   * @returns {Promise<Object>} { ok, config_id, count, total }
+   */
+  saveRhythm: (cfgId, data) => request.put('/sim/rhythm/' + cfgId, data),
+
+  /**
+   * <p>重置 12 个月节奏为线性 (每月 8.3333%)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @returns {Promise<Object>} { ok, config_id, count, total }
+   */
+  resetRhythmLinear: (cfgId) => request.post('/sim/rhythm/' + cfgId + '/reset-linear'),
+
+  // ========== 🆕 v2.1: 新业务增长配置 (prcp_sim_growth_config) ==========
+
+  /**
+   * <p>取增长配置 (增长方式 + 5 年参数)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @returns {Promise<Object>} { exists, growth_type, year1_value..year5_value, amount_unit, remark }
+   */
+  getGrowth: (cfgId) => request.get('/sim/growth/' + cfgId),
+
+  /**
+   * <p>保存增长配置 (UPSERT)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @param {Object} data - { growth_type, year1_value..year5_value, amount_unit, remark }
+   * @returns {Promise<Object>} { ok, config_id, growth_id, growth_type }
+   */
+  saveGrowth: (cfgId, data) => request.put('/sim/growth/' + cfgId, data),
+
+  /**
+   * <p>删除增长配置 (软删)</p>
+   * @param {number|string} cfgId - 节点配置 ID
+   * @returns {Promise<Object>} { ok, config_id, deleted }
+   */
+  deleteGrowth: (cfgId) => request.delete('/sim/growth/' + cfgId)
 }
