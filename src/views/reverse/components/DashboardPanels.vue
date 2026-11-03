@@ -253,26 +253,8 @@
       </el-card>
     </div>
 
-    <!-- Row 4: 节点 × 指标 热力图（真热力图，全宽） -->
-    <div class="bottom-row heatmap-row">
-      <el-card shadow="never">
-        <div slot="header" class="trend-header">
-          <span><i class="el-icon-data-line"></i> 节点 × 指标 热力图</span>
-          <div class="heatmap-controls">
-            <el-select v-model="heatmapMetric" size="mini" style="width:160px" @change="renderHeatmap">
-              <el-option v-for="m in heatmapMetricOptions" :key="m.code" :label="m.label" :value="m.code" />
-            </el-select>
-            <el-select v-model="heatmapCategory" size="mini" clearable placeholder="按大类过滤" style="width:130px" @change="renderHeatmap">
-              <el-option v-for="c in categoryOptions" :key="c.value" :label="c.label" :value="c.value" />
-            </el-select>
-          </div>
-        </div>
-        <div ref="heatmapChart" class="heatmap-area"></div>
-      </el-card>
-    </div>
-
-    <!-- Row 5: 末级节点余额柱状图（全宽，对齐原系统区块 7） -->
-    <div class="bottom-row">
+    <!-- Row 4: 末级节点余额柱状图（全宽，对齐原系统区块 7） -->
+    <div class="bottom-row full-row">
       <el-card shadow="never">
         <div slot="header" class="trend-header">
           <span><i class="el-icon-s-data"></i> 末级节点余额分布</span>
@@ -295,8 +277,8 @@
       </el-card>
     </div>
 
-    <!-- Row 6: 末级账户册余额走势（全宽，对齐原系统区块 8） -->
-    <div class="bottom-row">
+    <!-- Row 5: 末级账户册余额走势（全宽，对齐原系统区块 8） -->
+    <div class="bottom-row full-row">
       <el-card shadow="never">
         <div slot="header" class="trend-header">
           <span><i class="el-icon-data-line"></i> 末级账户册余额走势</span>
@@ -329,24 +311,24 @@ import { COLOR_PRIMARY, PALETTE_AUX, CATEGORY_COLORS, AXIS_COLORS, WARNING_LINE_
 import 'echarts/lib/chart/line'
 import 'echarts/lib/chart/pie'
 import 'echarts/lib/chart/bar'
-import 'echarts/lib/chart/heatmap'
 import 'echarts/lib/chart/radar'
 import 'echarts/lib/component/tooltip'
 import 'echarts/lib/component/legend'
 import 'echarts/lib/component/grid'
 import 'echarts/lib/component/title'
 import 'echarts/lib/component/markLine'
-import 'echarts/lib/component/visualMap'
 
 /**
  * @file 反算驾驶舱面板 (reverse/Index.vue 的 Tab 3 子组件)
- * @desc 嵌入 reverse/Index.vue 的「测算结果」Tab, 4 行布局:
+ * @desc 嵌入 reverse/Index.vue 的「测算结果」Tab, 5 区块布局:
  *         1) Hero + 筛选条 (组合方案/运行/月份/运行摘要 tag)
- *         2) 8 KPI 卡 (4 列 × 2 行: 资产/负债/贷款加权利率/ROE/CET1/LCR/NSFR/△EVE)
- *         3) 双栏: 5 指标 24 月趋势 + 5 指标评分雷达
- *         4) 双栏: Top 10 节点 + 大类分布 (环形 + 柱图)
- *         5) 节点 × 指标 真热力图 (全宽)
- *       直接调后端 /prcp-java/api/reverse-dashboard/{options,runs,dates,snapshot} 4 端点, 带 Bearer Token。
+ *         2) 目标达成进度卡片 (目标/实际/进度条/当前完成率/M12 完成率)
+ *         3) 8 KPI 卡 (4 列 × 2 行: 资产/负债/贷款加权利率/ROE/CET1/LCR/NSFR/△EVE, 含基期对比)
+ *         4) 双栏: 5 指标 24 月趋势 + 5 指标评分雷达
+ *         5) 双栏: Top 10 节点 + 大类分布 (环形 + 柱图)
+ *         6) 全宽: 末级节点余额分布 (横向条形 + 基准日/预测口径切换)
+ *         7) 全宽: 末级账户册余额走势 (大类汇总 / 节点明细 TopN)
+ *       直接调后端 /prcp-java/api/reverse-dashboard/{options,runs,dates,snapshot,balance-trend} 5 端点, 带 Bearer Token。
  *
  * @author zhanghh
  * @since 2026-10-09
@@ -385,10 +367,7 @@ export default {
       dates: [],
       snapshot: {},
       filter: { schemeCode: null, runId: null, dateOffset: 1 },
-      heatmapMetric: 'current_balance',
-      heatmapCategory: '',
       radarChart: null,
-      heatmapChart: null,
       _rerenderTimer: null,
       // ===== 目标达成 =====
       // ===== 余额口径 =====
@@ -428,14 +407,6 @@ export default {
       return rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
     },
     balanceTrendMonths() { return (this.balanceTrendData && this.balanceTrendData.months || []).length },
-    heatmapMetricOptions() {
-      return [
-        { code: 'current_balance',  label: '当前余额（元）' },
-        { code: 'avg_balance',      label: '平均余额（元）' },
-        { code: 'weighted_rate',    label: '加权平均利率' },
-        { code: 'interest_amount',  label: '利息收支（元）' }
-      ]
-    },
     categoryOptions() {
       return [
         { value: 'ASSET',       label: '资产' },
@@ -531,7 +502,6 @@ export default {
     await this.loadSnapshot()
     this.$nextTick(() => {
       this.renderRadar()
-      this.renderHeatmap()
       this.renderBalanceCharts()
     })
     window.addEventListener('resize', this.onResize)
@@ -539,23 +509,20 @@ export default {
   beforeDestroy() {
     window.removeEventListener('resize', this.onResize)
     if (this.radarChart) this.radarChart.dispose()
-    if (this.heatmapChart) this.heatmapChart.dispose()
     if (this.balanceBarChart) this.balanceBarChart.dispose()
     if (this.balanceTrendChart) this.balanceTrendChart.dispose()
   },
   methods: {
-    /** 窗口 resize 时重渲染 radar + heatmap + 余额图 */
+    /** 窗口 resize 时重渲染 radar + 余额图 */
     onResize() {
       if (this.radarChart) this.radarChart.resize()
-      if (this.heatmapChart) this.heatmapChart.resize()
       if (this.balanceBarChart) this.balanceBarChart.resize()
       if (this.balanceTrendChart) this.balanceTrendChart.resize()
     },
-    /** 重渲染所有图表 (radar + heatmap + 余额图) */
+    /** 重渲染所有图表 (radar + 余额图) */
     renderAll() {
       this.$nextTick(() => {
         this.renderRadar()
-        this.renderHeatmap()
         this.renderBalanceBar()
         this.renderBalanceTrend()
       })
@@ -1063,67 +1030,6 @@ export default {
       }, true)
     },
 
-    /** 渲染节点 × 指标 热力图 (按 heatmapCategory + heatmapMetric 过滤, 取 abs top 50) */
-    renderHeatmap() {
-      if (!this.$refs.heatmapChart) return
-      if (!this.heatmapChart) this.heatmapChart = echarts.init(this.$refs.heatmapChart)
-      const allRows = this.nodeMatrix || []
-      let rows = allRows
-      if (this.heatmapCategory) rows = rows.filter(r => r.category === this.heatmapCategory)
-      // 取 abs top 50
-      rows = rows.slice().sort((a, b) => Math.abs(Number(b[this.heatmapMetric] || 0)) - Math.abs(Number(a[this.heatmapMetric] || 0))).slice(0, 50)
-      const xLabels = rows.map(r => r.node_name || r.node_code)
-      const yLabels = ['资产', '负债', '权益', '表外', '其他']
-      const yIdx = (c) => ({ ASSET: 0, LIABILITY: 1, EQUITY: 2, OFF_BALANCE: 3, OTHER: 4 })[c] || 4
-      const data = []
-      rows.forEach((r, x) => {
-        const v = Number(r[this.heatmapMetric] || 0)
-        data.push([x, yIdx(r.category), v])
-      })
-      // 计算 min/max
-      const vals = data.map(d => d[2])
-      const min = vals.length ? Math.min(...vals) : 0
-      const max = vals.length ? Math.max(...vals) : 1
-      this.heatmapChart.setOption({
-        tooltip: {
-          position: 'top',
-          formatter: (p) => {
-            const r = rows[p.dataIndex]
-            return `<b>${r.node_name}</b><br/>编码：${r.node_code}<br/>类别：${this.catLabel(r.category)}<br/>层级：L${r.node_level}<br/>${this.heatmapMetricOptions.find(o => o.code === this.heatmapMetric).label}：<b>${this.fmtMoney(r[this.heatmapMetric])}</b>`
-          }
-        },
-        grid: { left: 80, right: 30, top: 30, bottom: 60 },
-        xAxis: {
-          type: 'category',
-          data: xLabels,
-          splitArea: { show: true },
-          axisLabel: { fontSize: 10, rotate: 50, interval: 0, formatter: (v) => v.length > 6 ? v.slice(0, 5) + '…' : v }
-        },
-        yAxis: {
-          type: 'category',
-          data: yLabels,
-          splitArea: { show: true },
-          axisLabel: { fontSize: 11 }
-        },
-        visualMap: {
-          min: min, max: max,
-          calculable: true,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: 0,
-          textStyle: { fontSize: 10 },
-          inRange: { color: ['#61DDAA', '#5B8FF9', '#F6903D', '#C9332B'] }
-        },
-        series: [{
-          name: this.heatmapMetricOptions.find(o => o.code === this.heatmapMetric).label,
-          type: 'heatmap',
-          data: data,
-          label: { show: false },
-          emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.3)' } }
-        }]
-      }, true)
-    },
-
     /** 导出当前快照 (开发中) */
     exportSnapshot() { this.$message.info('导出快照功能开发中…') },
     /** 导出当前趋势 (开发中) */
@@ -1276,10 +1182,9 @@ export default {
   grid-template-columns: 5fr 3fr;
   gap: 12px;
 }
-.heatmap-row { grid-template-columns: 1fr; margin-bottom: 12px; }
 .twocol-row { grid-template-columns: 1fr 1fr; }
-.heatmap-controls { display: flex; gap: 8px; align-items: center; }
-.heatmap-area { width: 100%; height: 380px; }
+/* 单卡片区块占满整行 (末级节点余额分布 / 末级账户册余额走势) */
+.full-row { grid-template-columns: 1fr; }
 
 /* ===== 目标达成进度卡片 ===== */
 .target-card { margin: 0 16px 12px; border-radius: 8px; }
