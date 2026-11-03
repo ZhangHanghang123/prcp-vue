@@ -65,6 +65,46 @@
       </div>
     </div>
 
+    <!-- Row 0.5: 目标达成进度（对齐原系统 ReverseDashboard.tsx 区块 3） -->
+    <el-card v-if="targets.length" shadow="never" class="target-card">
+      <div slot="header" class="trend-header">
+        <span><i class="el-icon-aim"></i> 目标达成进度</span>
+        <span class="target-hint">当前期 vs 方案目标　|　右侧为 M12（12 个月后）完成率</span>
+      </div>
+      <div class="target-head">
+        <span style="width:150px">指标</span>
+        <span style="width:110px">目标</span>
+        <span style="width:120px">实际</span>
+        <span style="flex:1">达成进度</span>
+        <span style="width:120px;text-align:right">当前完成率</span>
+        <span style="width:130px;text-align:right">M12 完成率</span>
+      </div>
+      <div v-for="t in targets" :key="t.kpi_code + (t.target_name || '')" class="target-row">
+        <span class="target-name" :style="{ color: metricColor(t.metric_type) }">
+          {{ metricLabel(t.metric_type) || t.kpi_code }}
+        </span>
+        <span class="target-val">
+          {{ constraintSymbol(t.constraint_type) }}{{ formatTargetValue(t.target_value, t.metric_type) }}
+        </span>
+        <span class="target-actual" :style="{ color: metricColor(t.metric_type) }">
+          {{ formatTargetValue(t.current_value, t.metric_type) }}
+        </span>
+        <span class="target-progress">
+          <el-progress :percentage="progressPct(t.current_rate)"
+                       :stroke-width="10"
+                       :show-text="false"
+                       :color="progressColor(t)"
+                       :format="() => ''" />
+        </span>
+        <span class="target-rate" :class="rateClass(t)">
+          完成率 {{ t.current_rate == null ? '-' : Number(t.current_rate).toFixed(2) + '%' }}
+        </span>
+        <span class="target-rate" :class="rateClass(t, 'm12')">
+          M12 {{ t.m12_rate == null ? '-' : Number(t.m12_rate).toFixed(2) + '%' }}
+        </span>
+      </div>
+    </el-card>
+
     <!-- Row 1: 8 KPI 卡（4 列 × 2 行） -->
     <div class="kpi-grid">
       <!-- 资产余额 -->
@@ -74,6 +114,7 @@
           <span class="kpi-value">{{ fmtMoney(kpi.asset_total) }}</span>
           <span class="kpi-unit">元</span>
         </div>
+        <div class="kpi-compare">{{ compareTag('amount', kpi.asset_total, kpiBase.asset_total, 'none') }}</div>
       </div>
       <!-- 负债余额 -->
       <div class="kpi-card kpi-liability">
@@ -82,6 +123,7 @@
           <span class="kpi-value">{{ fmtMoney(kpi.liability_total) }}</span>
           <span class="kpi-unit">元</span>
         </div>
+        <div class="kpi-compare">{{ compareTag('amount', kpi.liability_total, kpiBase.liability_total, 'none') }}</div>
       </div>
       <!-- 贷款加权平均利率 -->
       <div class="kpi-card kpi-loan-rate">
@@ -90,6 +132,7 @@
           <span class="kpi-value">{{ pctOrDash(kpi.loan_weighted_rate, 4) }}</span>
         </div>
         <div class="kpi-sub">境内各项人民币贷款下 5 个 L4 子节点按余额加权</div>
+        <div class="kpi-compare">{{ compareTag('ratio', kpi.loan_weighted_rate, kpiBase.loan_weighted_rate, 'none', true) }}</div>
       </div>
       <!-- ROE 净资产收益率 -->
       <div class="kpi-card">
@@ -103,6 +146,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('ROE')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.ROE?.min || 11 }}%</div>
+        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('ROE'), kpiBase.metric_avg?.ROE, 'higher') }}</div>
       </div>
       <!-- CET1 -->
       <div class="kpi-card">
@@ -116,6 +160,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('CET1')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.CET1?.min || 8.5 }}%</div>
+        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('CET1'), kpiBase.metric_avg?.CET1, 'higher') }}</div>
       </div>
       <!-- LCR -->
       <div class="kpi-card">
@@ -129,6 +174,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('LCR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.LCR?.min || 100 }}%</div>
+        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('LCR'), kpiBase.metric_avg?.LCR, 'higher') }}</div>
       </div>
       <!-- NSFR -->
       <div class="kpi-card">
@@ -142,6 +188,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('NSFR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.NSFR?.min || 100 }}%</div>
+        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('NSFR'), kpiBase.metric_avg?.NSFR, 'higher') }}</div>
       </div>
       <!-- △EVE -->
       <div class="kpi-card">
@@ -152,6 +199,7 @@
           <span class="kpi-unit">亿</span>
         </div>
         <div class="kpi-sub">阈值 |x| ≤ {{ thresholds.DELTA_EVE?.max_abs || 5 }} 亿</div>
+        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('DELTA_EVE'), kpiBase.metric_avg?.DELTA_EVE, 'lower') }}</div>
       </div>
     </div>
 
@@ -220,6 +268,55 @@
           </div>
         </div>
         <div ref="heatmapChart" class="heatmap-area"></div>
+      </el-card>
+    </div>
+
+    <!-- Row 5: 末级节点余额柱状图（全宽，对齐原系统区块 7） -->
+    <div class="bottom-row">
+      <el-card shadow="never">
+        <div slot="header" class="trend-header">
+          <span><i class="el-icon-s-data"></i> 末级节点余额分布</span>
+          <div class="balance-controls">
+            <el-radio-group v-model="balanceMode" size="mini" @change="renderBalanceCharts">
+              <el-radio-button label="base">基准日当前余额</el-radio-button>
+              <el-radio-button label="forecast">当月预测余额</el-radio-button>
+            </el-radio-group>
+            <el-select v-model="balanceFilterCat" size="mini" clearable placeholder="按大类过滤"
+                       style="width:130px" @change="renderBalanceCharts">
+              <el-option v-for="c in categoryOptions" :key="c.value" :label="c.label" :value="c.value" />
+            </el-select>
+            <el-tag size="mini" effect="plain" type="info">末级节点 {{ leafNodes.length }} 个</el-tag>
+            <el-tag size="mini" effect="plain" type="info">
+              {{ balanceMode === 'base' ? '基准日 ' + (catDist.balance_date || '-') : '预测月 ' + (catDist.forecast_date || '-') }}
+            </el-tag>
+          </div>
+        </div>
+        <div ref="balanceBarChart" class="balance-bar-area"></div>
+      </el-card>
+    </div>
+
+    <!-- Row 6: 末级账户册余额走势（全宽，对齐原系统区块 8） -->
+    <div class="bottom-row">
+      <el-card shadow="never">
+        <div slot="header" class="trend-header">
+          <span><i class="el-icon-data-line"></i> 末级账户册余额走势</span>
+          <div class="balance-controls">
+            <el-select v-model="balanceTrendView" size="mini" style="width:130px" @change="renderBalanceTrend">
+              <el-option label="按大类汇总" value="category" />
+              <el-option label="按节点明细" value="node" />
+            </el-select>
+            <el-select v-if="balanceTrendView === 'node'" v-model="balanceTrendTopN" size="mini"
+                       style="width:100px" @change="renderBalanceTrend">
+              <el-option label="Top 5" :value="5" />
+              <el-option label="Top 10" :value="10" />
+              <el-option label="Top 15" :value="15" />
+              <el-option label="Top 20" :value="20" />
+              <el-option label="全部" value="all" />
+            </el-select>
+            <el-tag size="mini" effect="plain" type="info">{{ balanceTrendMonths }} 个月</el-tag>
+          </div>
+        </div>
+        <div ref="balanceTrendChart" class="balance-trend-area"></div>
       </el-card>
     </div>
   </div>
@@ -292,15 +389,45 @@ export default {
       heatmapCategory: '',
       radarChart: null,
       heatmapChart: null,
-      _rerenderTimer: null
+      _rerenderTimer: null,
+      // ===== 目标达成 =====
+      // ===== 余额口径 =====
+      balanceMode: 'base',
+      balanceFilterCat: '',
+      balanceBarChart: null,
+      balanceTrendChart: null,
+      balanceTrendView: 'category',
+      balanceTrendTopN: 10,
+      balanceTrendData: null,
+      balanceTrendLoading: false
     }
   },
   computed: {
     kpi() { return this.snapshot.kpi || {} },
+    /** 基期 KPI (date_offset=1) — 用于 KPI 卡的「基期 vs 当前」对比 */
+    kpiBase() { return this.snapshot.kpi_base || {} },
     thresholds() { return this.snapshot.thresholds || {} },
     topNodes() { return this.snapshot.top_nodes || [] },
     riskAlerts() { return this.snapshot.risk_alerts || [] },
     nodeMatrix() { return this.snapshot.node_matrix || [] },
+    targets() { return this.snapshot.targets || [] },
+    catDist() { return this.snapshot.category_distribution || {} },
+    /** 末级节点（按 is_leaf 标记） */
+    leafNodes() {
+      return this.nodeMatrix.filter(n => n.is_leaf === true || n.is_leaf === 1)
+    },
+    /** 末级节点余额（按当前口径） */
+    leafBalances() {
+      const useBase = this.balanceMode === 'base'
+      const rows = this.leafNodes.map(n => ({
+        code: n.node_code,
+        name: n.node_name || n.node_code,
+        category: n.category,
+        value: Number(useBase ? (n.base_balance || 0) : (n.current_balance || 0)) || 0
+      }))
+      return rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    },
+    balanceTrendMonths() { return (this.balanceTrendData && this.balanceTrendData.months || []).length },
     heatmapMetricOptions() {
       return [
         { code: 'current_balance',  label: '当前余额（元）' },
@@ -405,6 +532,7 @@ export default {
     this.$nextTick(() => {
       this.renderRadar()
       this.renderHeatmap()
+      this.renderBalanceCharts()
     })
     window.addEventListener('resize', this.onResize)
   },
@@ -412,18 +540,24 @@ export default {
     window.removeEventListener('resize', this.onResize)
     if (this.radarChart) this.radarChart.dispose()
     if (this.heatmapChart) this.heatmapChart.dispose()
+    if (this.balanceBarChart) this.balanceBarChart.dispose()
+    if (this.balanceTrendChart) this.balanceTrendChart.dispose()
   },
   methods: {
-    /** 窗口 resize 时重渲染 radar + heatmap */
+    /** 窗口 resize 时重渲染 radar + heatmap + 余额图 */
     onResize() {
       if (this.radarChart) this.radarChart.resize()
       if (this.heatmapChart) this.heatmapChart.resize()
+      if (this.balanceBarChart) this.balanceBarChart.resize()
+      if (this.balanceTrendChart) this.balanceTrendChart.resize()
     },
-    /** 重渲染所有图表 (radar + heatmap) */
+    /** 重渲染所有图表 (radar + heatmap + 余额图) */
     renderAll() {
       this.$nextTick(() => {
         this.renderRadar()
         this.renderHeatmap()
+        this.renderBalanceBar()
+        this.renderBalanceTrend()
       })
     },
     /** 加载方案下拉选项 (含默认值) */
@@ -483,9 +617,16 @@ export default {
       finally { this.loading = false }
     },
     /** 方案切换 — 触发 loadRuns + loadSnapshot */
-    onSchemeChange() { this.loadRuns().then(() => this.loadSnapshot()) },
+    onSchemeChange() {
+      // 切换方案 → 余额走势缓存失效 (不同 run 的数据不同)
+      this.balanceTrendData = null
+      this.loadRuns().then(() => this.loadSnapshot())
+    },
     /** 运行切换 — 触发 loadDates + loadSnapshot */
-    onRunChange() { this.loadDates().then(() => this.loadSnapshot()) },
+    onRunChange() {
+      this.balanceTrendData = null
+      this.loadDates().then(() => this.loadSnapshot())
+    },
     /** 月份切换 — 直接 reload snapshot */
     onDateChange() { this.loadSnapshot() },
 
@@ -592,6 +733,279 @@ export default {
      */
     catTagType(c) {
       return ({ ASSET: 'success', LIABILITY: 'warning', EQUITY: 'info', OFF_BALANCE: '', OTHER: 'danger' })[c] || ''
+    },
+
+    // ================================================================
+    // 目标达成（对齐原系统 ReverseDashboard.tsx TargetRow）
+    // ================================================================
+    /**
+     * <p>KPI 卡「基期 vs 当前」对比标签 — 对位原系统 CompareTag</p>
+     *
+     * <p>kind='amount' → 变化率百分比 (如 +8.25%)；
+     * kind='ratio' → 百分点差 (如 +1.25pp)，<b>isRatioRaw</b> 为 true 时输入已是百分数。</p>
+     *
+     * @param {string} kind     'amount' | 'ratio'
+     * @param {number} current  当前值
+     * @param {number} base     基期值
+     * @param {string} direction 'higher' | 'lower' | 'none'
+     * @param {boolean} [isRatioRaw] 输入是否已是百分数 (避免 ×100)
+     * @returns {string} 对比文本
+     */
+    compareTag(kind, current, base, direction, isRatioRaw) {
+      if (current == null || base == null) return ''
+      const c = Number(current), b = Number(base)
+      if (isNaN(c) || isNaN(b)) return ''
+      const diff = c - b
+      const sign = diff > 0 ? '+' : (diff < 0 ? '' : '')
+      let text = ''
+      if (kind === 'ratio') {
+        // 比率型: 百分点差
+        const cur = isRatioRaw ? c : c * 100
+        const bas = isRatioRaw ? b : b * 100
+        const d = cur - bas
+        text = (d > 0 ? '+' : '') + d.toFixed(2) + 'pp'
+      } else {
+        // 金额型: 变化率
+        if (b === 0) return ''
+        const ratio = diff / Math.abs(b) * 100
+        text = (ratio > 0 ? '+' : '') + ratio.toFixed(2) + '%'
+      }
+      let cls = 'cmp-none'
+      if (direction === 'higher') cls = diff > 0 ? 'cmp-up' : (diff < 0 ? 'cmp-down' : 'cmp-none')
+      else if (direction === 'lower') cls = diff < 0 ? 'cmp-up' : (diff > 0 ? 'cmp-down' : 'cmp-none')
+      else cls = diff > 0 ? 'cmp-blue' : (diff < 0 ? 'cmp-orange' : 'cmp-none')
+      const baseText = kind === 'ratio'
+        ? (isRatioRaw ? b.toFixed(2) + '%' : (b * 100).toFixed(2) + '%')
+        : this.fmtMoney(b)
+      return `<span class="cmp-tag ${cls}">基期 ${baseText} · ${text}</span>`
+    },
+    /**
+     * <p>指标类型 → 中文标签</p>
+     * @param {string} m 指标类型 (ROE/CET1/LCR/NSFR/DELTA_EVE)
+     * @returns {string} 中文标签
+     */
+    metricLabel(m) {
+      return ({ ROE: 'ROE 净资产收益率', CET1: 'CET1 核心一级', LCR: 'LCR 流动性覆盖',
+                NSFR: 'NSFR 净稳定资金', DELTA_EVE: '△EVE 利率风险' })[m] || ''
+    },
+    /**
+     * <p>指标类型 → 主题色</p>
+     * @param {string} m 指标类型
+     * @returns {string} 颜色
+     */
+    metricColor(m) {
+      return ({ ROE: '#722ed1', CET1: '#1890ff', LCR: '#52c41a',
+                NSFR: '#13c2c2', DELTA_EVE: '#eb2f96' })[m] || '#303133'
+    },
+    /**
+     * <p>约束类型 → 符号</p>
+     * @param {string} c 约束类型 (GE/LE/EQ)
+     * @returns {string} 符号
+     */
+    constraintSymbol(c) {
+      return c === 'LE' ? '≤' : (c === 'EQ' ? '=' : '≥')
+    },
+    /**
+     * <p>目标值 / 实际值格式化 (% 类指标保留 2 位小数 + %, 其余走金额)</p>
+     * @param {number} v 数值
+     * @param {string} m 指标类型
+     * @returns {string} 格式化字符串
+     */
+    formatTargetValue(v, m) {
+      if (v == null) return '-'
+      const n = Number(v)
+      if (isNaN(n)) return '-'
+      // DELTA_EVE 目标值单位是「亿」(如 -500 = -500 亿), 其余 % 类指标
+      if (m === 'DELTA_EVE') return n.toFixed(2) + ' 亿'
+      return n.toFixed(2) + '%'
+    },
+    /**
+     * <p>完成率 → 进度条百分比 (0~100, 空值 → 0)</p>
+     * @param {number} r 完成率
+     * @returns {number} 百分比
+     */
+    progressPct(r) {
+      if (r == null) return 0
+      const n = Number(r)
+      if (isNaN(n)) return 0
+      return Math.max(0, Math.min(100, n))
+    },
+    /**
+     * <p>进度条颜色 (达成绿 / 未达成红 / 不可比灰)</p>
+     * @param {Object} t 目标行
+     * @returns {string} 颜色
+     */
+    progressColor(t) {
+      if (t.achieved == null) return '#d9d9d9'
+      return t.achieved ? '#52c41a' : '#f5222d'
+    },
+    /**
+     * <p>完成率文本样式 (达成绿 / 未达成红 / 不可比灰)</p>
+     * @param {Object} t 目标行
+     * @param {string} [which] 'm12' 取 M12 完成率
+     * @returns {string} CSS 类
+     */
+    rateClass(t, which) {
+      const r = which === 'm12' ? t.m12_rate : t.current_rate
+      if (r == null) return 'rate-none'
+      if (t.achieved == null) return 'rate-none'
+      return t.achieved ? 'rate-ok' : 'rate-bad'
+    },
+
+    // ================================================================
+    // 末级节点余额（对齐原系统 ReverseDashboard.tsx 区块 7/8）
+    // ================================================================
+    /**
+     * <p>渲染末级节点余额横向条形图</p>
+     */
+    renderBalanceCharts() {
+      this.renderBalanceBar()
+      this.renderBalanceTrend()
+    },
+    /**
+     * <p>末级节点余额横向条形图 (按 |余额| 降序, 按大类着色)</p>
+     */
+    renderBalanceBar() {
+      if (!this.$refs.balanceBarChart) return
+      if (!this.balanceBarChart) this.balanceBarChart = echarts.init(this.$refs.balanceBarChart)
+      let rows = this.leafBalances
+      if (this.balanceFilterCat) rows = rows.filter(r => r.category === this.balanceFilterCat)
+      const useBase = this.balanceMode === 'base'
+      this.balanceBarChart.setOption({
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => {
+            const r = rows[p.dataIndex]
+            if (!r) return ''
+            return `${r.code} · ${r.name}<br/>大类：${this.catLabel(r.category)}<br/>` +
+                   `${useBase ? '基准日当前余额' : '当月预测余额'}：<b>${this.fmtMoney(r.value)}</b>`
+          }
+        },
+        grid: { left: 220, right: 110, top: 20, bottom: 56 },
+        xAxis: {
+          type: 'value',
+          name: useBase ? '基准日当前余额' : '当月预测余额',
+          nameLocation: 'middle',
+          nameGap: 36,
+          axisLabel: { fontSize: 10, formatter: (v) => this.axisMoney(v) }
+        },
+        yAxis: {
+          type: 'category',
+          data: rows.map(r => r.name),
+          axisLabel: { fontSize: 11, width: 200, overflow: 'truncate' },
+          axisTick: { alignWithLabel: true }
+        },
+        series: [{
+          name: '余额',
+          type: 'bar',
+          barWidth: '58%',
+          data: rows.map(r => ({
+            value: r.value,
+            itemStyle: { color: CATEGORY_COLORS[r.category] || '#999' }
+          })),
+          label: {
+            show: true, position: 'right', fontSize: 10,
+            formatter: (p) => this.fmtMoney(p.value)
+          }
+        }]
+      }, true)
+      // 高度随节点数自适应
+      const h = Math.max(420, 22 * rows.length)
+      this.balanceBarChart.getDom().style.height = h + 'px'
+      this.balanceBarChart.resize()
+    },
+    /**
+     * <p>加载并渲染末级账户册余额走势</p>
+     */
+    async renderBalanceTrend() {
+      if (!this.$refs.balanceTrendChart) return
+      if (!this.balanceTrendChart) this.balanceTrendChart = echarts.init(this.$refs.balanceTrendChart)
+      if (!this.balanceTrendData) {
+        this.balanceTrendLoading = true
+        try {
+          const qs = new URLSearchParams({
+            scheme_code: this.filter.schemeCode || '',
+            run_id: this.filter.runId || ''
+          }).toString()
+          const r = await (await fetch('/prcp-java/api/reverse-dashboard/balance-trend?' + qs,
+                                       { headers: tokenH() })).json()
+          if (r.code === 0) this.balanceTrendData = r.data || null
+        } catch (e) {
+          console.warn('balance-trend failed', e)
+        } finally {
+          this.balanceTrendLoading = false
+        }
+      }
+      const d = this.balanceTrendData
+      if (!d || !(d.months || []).length) return
+      const months = d.months.map(m => String(m.date || '').slice(0, 7))
+      let series = []
+      if (this.balanceTrendView === 'node') {
+        let nodes = d.nodes || []
+        if (this.balanceTrendTopN !== 'all') nodes = nodes.slice(0, Number(this.balanceTrendTopN) || 10)
+        series = nodes.map(n => ({
+          name: n.name || n.code,
+          type: 'line',
+          smooth: true,
+          symbolSize: 4,
+          lineStyle: { width: 1.8 },
+          itemStyle: { color: CATEGORY_COLORS[n.category] || '#5B8FF9' },
+          data: n.values || []
+        }))
+      } else {
+        series = (d.categories || []).map(c => ({
+          name: this.catLabel(c.key),
+          type: 'line',
+          smooth: true,
+          symbolSize: 4,
+          lineStyle: { width: 2 },
+          itemStyle: { color: CATEGORY_COLORS[c.key] || '#5B8FF9' },
+          data: c.values || []
+        }))
+      }
+      // 稠密降级 (>20 条线隐藏 symbol)
+      const dense = series.length > 20
+      if (dense) series.forEach(s => { s.symbolSize = 0; s.showSymbol = false; s.lineStyle.width = 1.1 })
+      this.balanceTrendChart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'line' },
+          formatter: (ps) => {
+            if (!ps.length) return ''
+            const head = `<b>M${this.balanceTrendData.months[ps[0].dataIndex].offset} · ${months[ps[0].dataIndex]}</b>`
+            return head + '<br/>' + ps.map(p =>
+              `${p.marker}${p.seriesName}<br/>月末余额：<b>${this.fmtMoney(p.value)}</b>`).join('<br/>')
+          }
+        },
+        legend: { type: 'scroll', bottom: 0, textStyle: { fontSize: 10 } },
+        grid: { left: 100, right: 30, top: 30, bottom: 56 },
+        xAxis: { type: 'category', boundaryGap: false, data: months, axisLabel: { fontSize: 10, rotate: 45 } },
+        yAxis: {
+          type: 'value',
+          name: '月末余额',
+          nameLocation: 'middle',
+          nameGap: 70,
+          axisLabel: { fontSize: 10, formatter: (v) => this.axisMoney(v) }
+        },
+        series: series
+      }, true)
+      const h = Math.max(420, 40 + series.length * 16)
+      this.balanceTrendChart.getDom().style.height = h + 'px'
+      this.balanceTrendChart.resize()
+    },
+    /**
+     * <p>坐标轴金额格式化 (万亿 / 亿 / 万)</p>
+     * @param {number} v 金额
+     * @returns {string} 格式化字符串
+     */
+    axisMoney(v) {
+      const n = Number(v)
+      if (isNaN(n)) return ''
+      const a = Math.abs(n)
+      if (a >= 1e12) return (n / 1e12).toFixed(1) + '万亿'
+      if (a >= 1e8) return (n / 1e8).toFixed(0) + '亿'
+      if (a >= 1e4) return (n / 1e4).toFixed(0) + '万'
+      return n.toFixed(0)
     },
 
     /** 渲染 5 指标评分雷达 (ROE/CET1/LCR/NSFR/△EVE) */
@@ -866,6 +1280,43 @@ export default {
 .twocol-row { grid-template-columns: 1fr 1fr; }
 .heatmap-controls { display: flex; gap: 8px; align-items: center; }
 .heatmap-area { width: 100%; height: 380px; }
+
+/* ===== 目标达成进度卡片 ===== */
+.target-card { margin: 0 16px 12px; border-radius: 8px; }
+.target-hint { font-size: 12px; color: #909399; }
+.target-head {
+  display: flex; align-items: center;
+  padding: 6px 0; font-size: 12px; color: #909399;
+  border-bottom: 1px solid #f0f1f3; font-weight: 600;
+}
+.target-row {
+  display: flex; align-items: center;
+  padding: 8px 0; font-size: 13px;
+  border-bottom: 1px solid #f5f7fa;
+}
+.target-row:last-child { border-bottom: none; }
+.target-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.target-val { color: #606266; }
+.target-actual { font-weight: 600; }
+.target-progress { padding-right: 16px; }
+.target-rate { text-align: right; font-size: 12px; }
+.rate-ok { color: #52c41a; font-weight: 600; }
+.rate-bad { color: #f5222d; font-weight: 600; }
+.rate-none { color: #909399; }
+
+/* ===== KPI 基期对比标签 ===== */
+.kpi-compare { margin-top: 4px; font-size: 11px; line-height: 1.4; }
+.cmp-tag { white-space: nowrap; }
+.cmp-up { color: #52c41a; }
+.cmp-down { color: #f5222d; }
+.cmp-blue { color: #1890ff; }
+.cmp-orange { color: #fa8c16; }
+.cmp-none { color: #8f959e; }
+
+/* ===== 末级节点余额（区块 5/6）===== */
+.balance-controls { display: flex; gap: 8px; align-items: center; }
+.balance-bar-area { width: 100%; height: 420px; }
+.balance-trend-area { width: 100%; height: 420px; }
 .trend-card, .dist-card, .radar-card {
   border-radius: 8px;
   display: flex;
