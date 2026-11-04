@@ -25,7 +25,8 @@
         </div>
         <div class="hero-actions">
           <el-button size="small" icon="el-icon-refresh" @click="loadSnapshot">刷新数据</el-button>
-          <el-button size="small" type="primary" icon="el-icon-download" @click="exportSnapshot">导出快照</el-button>
+          <el-button size="small" type="primary" icon="el-icon-download"
+                     :loading="exporting" @click="exportResult">导出结果</el-button>
         </div>
       </div>
     </div>
@@ -215,7 +216,6 @@
       <el-card shadow="never" class="trend-card">
         <div slot="header" class="trend-header">
           <span><i class="el-icon-time"></i> 5 指标 24 月趋势</span>
-          <el-button type="text" size="mini" icon="el-icon-download" @click="exportTrend">导出</el-button>
         </div>
         <v-chart v-if="!loading && trendOption" :options="trendOption" :autoresize="true" class="full-chart" />
       </el-card>
@@ -467,7 +467,9 @@ export default {
       balanceTrendView: 'category',
       balanceTrendTopN: 10,
       balanceTrendData: null,
-      balanceTrendLoading: false
+      balanceTrendLoading: false,
+      // ===== 导出 =====
+      exporting: false
     }
   },
   computed: {
@@ -1125,10 +1127,54 @@ export default {
       }, true)
     },
 
-    /** 导出当前快照 (开发中) */
-    exportSnapshot() { this.$message.info('导出快照功能开发中…') },
-    /** 导出当前趋势 (开发中) */
-    exportTrend() { this.$message.info('导出趋势功能开发中…') }
+    /**
+     * <p>导出测算结果 (xlsx) — 对位原系统 ReverseDashboard.tsx handleExport</p>
+     *
+     * <p>后端 GET /reverse-dashboard/balance-export 返回二进制流,
+     * 含 4 个 Sheet: 账户册结构 / 按层级汇总 / 末级节点大类汇总 / 口径说明。</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async exportResult() {
+      const sc = this.filter.schemeCode
+      if (!sc) {
+        this.$message.warning('请先选择组合方案')
+        return
+      }
+      this.exporting = true
+      try {
+        const qs = new URLSearchParams({ scheme_code: sc })
+        if (this.filter.runId) qs.set('run_id', this.filter.runId)
+        const res = await fetch('/prcp-java/api/reverse-dashboard/balance-export?' + qs.toString(),
+          { headers: tokenH() })
+        if (!res.ok) {
+          let msg = '导出失败（HTTP ' + res.status + '）'
+          try {
+            const j = await res.json()
+            if (j && j.msg) msg = j.msg
+          } catch (e) { /* blob 响应读不出 detail, 用默认提示 */ }
+          this.$message.error(msg)
+          return
+        }
+        const cd = res.headers.get('content-disposition') || ''
+        const m = cd.match(/filename\*=UTF-8''([^;]+)/i)
+        const fname = m ? decodeURIComponent(m[1]) : ('组合反算结果导出_' + sc + '.xlsx')
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fname
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        this.$message.success('已导出：' + fname)
+      } catch (e) {
+        this.$message.error('导出失败：' + (e.message || ''))
+      } finally {
+        this.exporting = false
+      }
+    }
   }
 }
 </script>
