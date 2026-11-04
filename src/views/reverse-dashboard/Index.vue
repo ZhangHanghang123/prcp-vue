@@ -24,6 +24,12 @@
                        :label="`M${d.date_offset} (${d.data_date})`" :value="d.date_offset" />
           </el-select>
         </el-form-item>
+        <el-form-item label="余额口径">
+          <el-select v-model="balanceMode" style="width:150px" @change="renderCategoryChart">
+            <el-option label="基准日当前余额" value="base" />
+            <el-option label="当月预测余额" value="forecast" />
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button icon="el-icon-refresh" @click="loadSnapshot">刷新</el-button>
         </el-form-item>
@@ -91,7 +97,10 @@
       <el-col :span="8">
         <el-card shadow="never">
           <div slot="header" class="chart-header">
-            <span>📊 大类分布</span>
+            <span>📊 {{ balanceMode === 'base' ? '当前余额分布' : '预测余额分布' }}</span>
+            <span class="muted">
+              {{ balanceMode === 'base' ? '基准日 ' + (categoryDist.balance_date || '-') : '预测月 ' + (categoryDist.forecast_date || '-') }}
+            </span>
           </div>
           <div ref="catChart" class="chart-area"></div>
         </el-card>
@@ -139,7 +148,8 @@ export default {
       metricTypes: ['ROE', 'CET1', 'LCR', 'NSFR', 'DELTA_EVE'],
       thresholds: {},
       trendChart: null,
-      catChart: null
+      catChart: null,
+      balanceMode: 'base'
     }
   },
   computed: {
@@ -288,14 +298,20 @@ export default {
         series
       })
     },
-    /** 渲染大类分布环形饼图 */
+    /** 渲染大类余额分布环形饼图 (口径随 balanceMode 切换) */
     renderCategoryChart() {
-      if (!this.categoryDist || !this.categoryDist.by_balance) return
+      if (!this.categoryDist) return
       if (!this.catChart) this.catChart = echarts.init(this.$refs.catChart)
-      const dist = this.categoryDist.by_balance
+      const isBase = this.balanceMode === 'base'
+      const dist = (isBase ? this.categoryDist.by_balance : this.categoryDist.by_balance_forecast) || {}
+      const bDate = isBase ? this.categoryDist.balance_date : this.categoryDist.forecast_date
+      const label = isBase ? '当前余额' : '预测余额'
       const data = Object.entries(dist).filter(([k, v]) => v !== 0).map(([k, v]) => ({ name: k, value: v }))
       this.catChart.setOption({
-        tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => `${p.name}<br/>${label}：¥${Number(p.value).toLocaleString()}<br/>占比：${p.percent}%${bDate ? `<br/>${isBase ? '基准日' : '预测月'}：${bDate}` : ''}`
+        },
         legend: { bottom: 0 },
         series: [{
           type: 'pie', radius: ['40%', '70%'], avoidLabelOverlap: true,
@@ -303,7 +319,7 @@ export default {
           label: { formatter: '{b}\n{d}%' },
           emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
         }]
-      })
+      }, true)
     }
   }
 }

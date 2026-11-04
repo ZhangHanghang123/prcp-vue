@@ -54,6 +54,13 @@
                        :label="`M${d.date_offset} (${d.data_date})`" :value="d.date_offset" />
           </el-select>
         </div>
+        <div class="filter-cell">
+          <label class="filter-label">余额口径</label>
+          <el-select v-model="balanceMode" placeholder="请选择" size="small" class="filter-control" @change="onBalanceModeChange">
+            <el-option label="基准日当前余额" value="base" />
+            <el-option label="当月预测余额" value="forecast" />
+          </el-select>
+        </div>
         <div class="filter-cell filter-cell-tag" v-if="snapshot.run_id">
           <label class="filter-label">运行摘要</label>
           <div class="filter-tags">
@@ -246,10 +253,23 @@
 
       <el-card shadow="never" class="dist-card">
         <div slot="header" class="trend-header">
-          <span><i class="el-icon-pie-chart"></i> 大类分布</span>
+          <span>
+            <i class="el-icon-pie-chart"></i>
+            {{ balanceMode === 'base' ? '当前余额分布' : '预测余额分布' }}
+          </span>
+          <el-tag v-if="balanceMode === 'base' && catDist.balance_date" size="mini" effect="plain" type="info">
+            基准日 {{ catDist.balance_date }}
+          </el-tag>
+          <el-tag v-else-if="catDist.forecast_date" size="mini" effect="plain" type="warning">
+            预测月 {{ catDist.forecast_date }}
+          </el-tag>
         </div>
-        <v-chart v-if="!loading && donutOption" :options="donutOption" :autoresize="true" class="dist-half" />
-        <v-chart v-if="!loading && barOption" :options="barOption" :autoresize="true" class="dist-half" />
+        <div v-if="balanceMode === 'base'" class="dist-hint">
+          ⓘ 基准日为方案起点，固定不变；切换上方「预测月份」时本图不变。需看随月份变化的余额，请把「余额口径」切到「当月预测余额」。
+        </div>
+        <v-chart v-if="!loading && donutOption" :options="donutOption" :autoresize="true" class="dist-donut" />
+        <el-divider content-position="left" class="dist-divider">金额分布</el-divider>
+        <v-chart v-if="!loading && barOption" :options="barOption" :autoresize="true" class="dist-bar" />
       </el-card>
     </div>
 
@@ -259,10 +279,9 @@
         <div slot="header" class="trend-header">
           <span><i class="el-icon-s-data"></i> 末级节点余额分布</span>
           <div class="balance-controls">
-            <el-radio-group v-model="balanceMode" size="mini" @change="renderBalanceCharts">
-              <el-radio-button label="base">基准日当前余额</el-radio-button>
-              <el-radio-button label="forecast">当月预测余额</el-radio-button>
-            </el-radio-group>
+            <el-tag size="mini" effect="plain" type="info">
+              {{ balanceMode === 'base' ? '基准日当前余额' : '当月预测余额' }}
+            </el-tag>
             <el-select v-model="balanceFilterCat" size="mini" clearable placeholder="按大类过滤"
                        style="width:130px" @change="renderBalanceCharts">
               <el-option v-for="c in categoryOptions" :key="c.value" :label="c.label" :value="c.value" />
@@ -448,14 +467,22 @@ export default {
         series: series
       }
     },
+    /** 大类余额分布环形图 (口径随 balanceMode 切换) — 对位原系统 distOpt */
     donutOption() {
-      const d = (this.snapshot.category_distribution || {}).by_balance || {}
+      const cd = this.snapshot.category_distribution || {}
+      const isBase = this.balanceMode === 'base'
+      const d = (isBase ? cd.by_balance : cd.by_balance_forecast) || {}
+      const bDate = isBase ? cd.balance_date : cd.forecast_date
+      const label = isBase ? '当前余额' : '预测余额'
       const data = Object.entries(d).map(([k, v]) => ({ name: this.catLabel(k), value: v, _cat: k }))
       return {
-        tooltip: { trigger: 'item', formatter: '{b}<br/>{c} ({d}%)' },
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => `${p.name}<br/>${label}：${this.fmtMoney(p.value)}<br/>占比：${p.percent}%${bDate ? `<br/>${isBase ? '基准日' : '预测月'}：${bDate}` : ''}`
+        },
         legend: { orient: 'vertical', right: 5, top: 'middle', textStyle: { fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
         series: [{
-          name: '大类分布',
+          name: isBase ? '当前余额分布' : '预测余额分布',
           type: 'pie',
           radius: ['45%', '70%'],
           center: ['38%', '50%'],
@@ -469,23 +496,44 @@ export default {
         }]
       }
     },
+    /** 大类金额分布柱状图 (与环形图同源, 口径随 balanceMode 切换) — 对位原系统 distBarOpt */
     barOption() {
-      const c = (this.snapshot.category_distribution || {}).by_count || {}
-      const data = Object.entries(c).map(([k, v]) => ({ name: this.catLabel(k), value: v, _cat: k }))
+      const cd = this.snapshot.category_distribution || {}
+      const isBase = this.balanceMode === 'base'
+      const d = (isBase ? cd.by_balance : cd.by_balance_forecast) || {}
+      const cnt = cd.by_count || {}
+      const bDate = isBase ? cd.balance_date : cd.forecast_date
+      const label = isBase ? '当前余额' : '预测余额'
+      const data = Object.entries(d).map(([k, v]) => ({ name: this.catLabel(k), value: v, _cat: k }))
       return {
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: (p) => `${p[0].name}<br/>${p[0].value} 个节点` },
-        grid: { left: 40, right: 20, top: 20, bottom: 30 },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          formatter: (ps) => {
+            const p = ps[0]
+            const cat = data[p.dataIndex] ? data[p.dataIndex]._cat : ''
+            return `${p.name}<br/>${label}：${this.fmtMoney(p.value)}${bDate ? `<br/>${isBase ? '基准日' : '预测月'}：${bDate}` : ''}<br/>节点数：${cnt[cat] || 0}`
+          }
+        },
+        grid: { left: 70, right: 20, top: 30, bottom: 30 },
         xAxis: { type: 'category', data: data.map(d => d.name), axisLabel: { fontSize: 11 } },
-        yAxis: { type: 'value', axisLabel: { fontSize: 11 } },
+        yAxis: {
+          type: 'value',
+          name: label,
+          nameLocation: 'end',
+          nameGap: 14,
+          nameTextStyle: { align: 'right', color: '#8f959e', fontSize: 11 },
+          axisLabel: { formatter: (v) => this.axisMoney(v) }
+        },
         series: [{
-          name: '节点数',
+          name: label,
           type: 'bar',
-          barWidth: '55%',
+          barWidth: '50%',
           data: data.map(d => ({
             value: d.value,
             itemStyle: { color: CATEGORY_COLORS[d._cat] || '#999' }
           })),
-          label: { show: true, position: 'top', fontSize: 11 }
+          label: { show: true, position: 'top', fontSize: 11, formatter: (p) => this.fmtMoney(p.value) }
         }]
       }
     }
@@ -596,6 +644,17 @@ export default {
     },
     /** 月份切换 — 直接 reload snapshot */
     onDateChange() { this.loadSnapshot() },
+    /**
+     * <p>余额口径切换 (基准日当前余额 / 当月预测余额)</p>
+     *
+     * <p>影响: 大类余额分布(环形+金额柱图) 与 末级节点余额分布。
+     * 环形图/柱图是 computed 自动响应, 末级节点柱图是 echarts 实例需手动重绘。</p>
+     *
+     * @returns {void}
+     */
+    onBalanceModeChange() {
+      this.renderBalanceCharts()
+    },
 
     /**
      * <p>从 kpi.metric_avg 取某个指标均值</p>
@@ -1240,16 +1299,24 @@ export default {
   flex: 1;
   min-height: 320px;
 }
-.dist-half {
+.dist-donut {
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  height: 240px;
 }
-.dist-half:first-of-type {
-  flex: 1 1 55%;
+.dist-bar {
+  width: 100%;
+  height: 160px;
 }
-.dist-half:last-of-type {
-  flex: 1 1 45%;
+.dist-hint {
+  font-size: 11px;
+  color: #8f959e;
+  line-height: 1.6;
+  margin-bottom: 6px;
+}
+.dist-divider {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: #8f959e;
 }
 .trend-header {
   display: flex; justify-content: space-between; align-items: center;
