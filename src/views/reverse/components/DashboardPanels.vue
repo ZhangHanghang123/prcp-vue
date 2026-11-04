@@ -79,34 +79,34 @@
         <span class="target-hint">当前期 vs 方案目标　|　右侧为 M12（12 个月后）完成率</span>
       </div>
       <div class="target-head">
-        <span style="width:150px">指标</span>
-        <span style="width:110px">目标</span>
-        <span style="width:120px">实际</span>
-        <span style="flex:1">达成进度</span>
-        <span style="width:120px;text-align:right">当前完成率</span>
-        <span style="width:130px;text-align:right">M12 完成率</span>
+        <span class="tc-name">指标</span>
+        <span class="tc-target">目标</span>
+        <span class="tc-actual">实际</span>
+        <span class="tc-progress">达成进度</span>
+        <span class="tc-rate">当前完成率</span>
+        <span class="tc-m12">M12 完成率</span>
       </div>
       <div v-for="t in targets" :key="t.kpi_code + (t.target_name || '')" class="target-row">
-        <span class="target-name" :style="{ color: metricColor(t.metric_type) }">
+        <span class="target-name tc-name" :style="{ color: metricColor(t.metric_type) }">
           {{ metricLabel(t.metric_type) || t.kpi_code }}
         </span>
-        <span class="target-val">
+        <span class="target-val tc-target">
           {{ constraintSymbol(t.constraint_type) }}{{ formatTargetValue(t.target_value, t.metric_type) }}
         </span>
-        <span class="target-actual" :style="{ color: metricColor(t.metric_type) }">
+        <span class="target-actual tc-actual" :style="{ color: metricColor(t.metric_type) }">
           {{ formatTargetValue(t.current_value, t.metric_type) }}
         </span>
-        <span class="target-progress">
+        <span class="target-progress tc-progress">
           <el-progress :percentage="progressPct(t.current_rate)"
                        :stroke-width="10"
                        :show-text="false"
                        :color="progressColor(t)"
                        :format="() => ''" />
         </span>
-        <span class="target-rate" :class="rateClass(t)">
+        <span class="target-rate tc-rate" :class="rateClass(t)">
           完成率 {{ t.current_rate == null ? '-' : Number(t.current_rate).toFixed(2) + '%' }}
         </span>
-        <span class="target-rate" :class="rateClass(t, 'm12')">
+        <span class="target-rate tc-m12" :class="rateClass(t, 'm12')">
           M12 {{ t.m12_rate == null ? '-' : Number(t.m12_rate).toFixed(2) + '%' }}
         </span>
       </div>
@@ -121,7 +121,7 @@
           <span class="kpi-value">{{ fmtMoney(kpi.asset_total) }}</span>
           <span class="kpi-unit">元</span>
         </div>
-        <div class="kpi-compare">{{ compareTag('amount', kpi.asset_total, kpiBase.asset_total, 'none') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="amount" :current="kpi.asset_total" :base="kpiBase.asset_total" direction="none" /></div>
       </div>
       <!-- 负债余额 -->
       <div class="kpi-card kpi-liability">
@@ -130,7 +130,7 @@
           <span class="kpi-value">{{ fmtMoney(kpi.liability_total) }}</span>
           <span class="kpi-unit">元</span>
         </div>
-        <div class="kpi-compare">{{ compareTag('amount', kpi.liability_total, kpiBase.liability_total, 'none') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="amount" :current="kpi.liability_total" :base="kpiBase.liability_total" direction="none" /></div>
       </div>
       <!-- 贷款加权平均利率 -->
       <div class="kpi-card kpi-loan-rate">
@@ -139,7 +139,7 @@
           <span class="kpi-value">{{ pctOrDash(kpi.loan_weighted_rate, 4) }}</span>
         </div>
         <div class="kpi-sub">境内各项人民币贷款下 5 个 L4 子节点按余额加权</div>
-        <div class="kpi-compare">{{ compareTag('ratio', kpi.loan_weighted_rate, kpiBase.loan_weighted_rate, 'none', true) }}</div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="kpi.loan_weighted_rate" :base="kpiBase.loan_weighted_rate" direction="none" :is-ratio-raw="true" /></div>
       </div>
       <!-- ROE 净资产收益率 -->
       <div class="kpi-card">
@@ -153,7 +153,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('ROE')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.ROE?.min || 11 }}%</div>
-        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('ROE'), kpiBase.metric_avg?.ROE, 'higher') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('ROE')" :base="kpiBase.metric_avg?.ROE" direction="higher" /></div>
       </div>
       <!-- CET1 -->
       <div class="kpi-card">
@@ -167,7 +167,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('CET1')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.CET1?.min || 8.5 }}%</div>
-        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('CET1'), kpiBase.metric_avg?.CET1, 'higher') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('CET1')" :base="kpiBase.metric_avg?.CET1" direction="higher" /></div>
       </div>
       <!-- LCR -->
       <div class="kpi-card">
@@ -181,7 +181,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('LCR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.LCR?.min || 100 }}%</div>
-        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('LCR'), kpiBase.metric_avg?.LCR, 'higher') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('LCR')" :base="kpiBase.metric_avg?.LCR" direction="higher" /></div>
       </div>
       <!-- NSFR -->
       <div class="kpi-card">
@@ -195,7 +195,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('NSFR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.NSFR?.min || 100 }}%</div>
-        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('NSFR'), kpiBase.metric_avg?.NSFR, 'higher') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('NSFR')" :base="kpiBase.metric_avg?.NSFR" direction="higher" /></div>
       </div>
       <!-- △EVE -->
       <div class="kpi-card">
@@ -206,7 +206,7 @@
           <span class="kpi-unit">亿</span>
         </div>
         <div class="kpi-sub">阈值 |x| ≤ {{ thresholds.DELTA_EVE?.max_abs || 5 }} 亿</div>
-        <div class="kpi-compare">{{ compareTag('ratio', metricAvg('DELTA_EVE'), kpiBase.metric_avg?.DELTA_EVE, 'lower') }}</div>
+        <div class="kpi-compare"><kpi-compare kind="amount" :current="metricAvg('DELTA_EVE')" :base="kpiBase.metric_avg?.DELTA_EVE" direction="lower" :is-yi="true" /></div>
       </div>
     </div>
 
@@ -375,9 +375,79 @@ function tokenH() {
   return t ? { Authorization: 'Bearer ' + t } : {}
 }
 
+/**
+ * <p>金额格式化 (模块级, 供函数式组件 KpiCompare 复用)</p>
+ *
+ * @param {number|string} v 金额 (元)
+ * @returns {string} 带「亿 / 万」单位的文本
+ */
+function fmtMoneyVal(v) {
+  if (v == null) return '-'
+  const a = Math.abs(Number(v))
+  if (a >= 1e8) return (v / 1e8).toFixed(2) + ' 亿'
+  if (a >= 1e4) return (v / 1e4).toFixed(2) + ' 万'
+  return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
+}
+
+/**
+ * <p>KPI 卡「基期 vs 当前」对比标签 (函数式组件)</p>
+ *
+ * <p>为什么用函数式组件而不是返回 HTML 字符串 + v-html:
+ * <ul>
+ *   <li>返回 HTML 字符串时若用 {@code {{ }}} 插值, 标签会被当纯文本原样打印</li>
+ *   <li>改用 v-html 又会因为 {@code <style scoped>} 不给动态插入节点加 scopeId, 样式全部失效</li>
+ *   <li>函数式组件在父组件的 render 上下文中建 vnode, 继承父级 scopeId, 样式正常生效</li>
+ * </ul>
+ *
+ * <p>kind='amount' → 变化率百分比 (如 +8.25%)；
+ * kind='ratio' → 百分点差 (如 +1.25pp)，isRatioRaw 为 true 时输入已是百分数。</p>
+ *
+ * @author zhanghh
+ * @since 2026-11-04
+ */
+const KpiCompare = {
+  name: 'KpiCompare',
+  functional: true,
+  props: {
+    kind: { type: String, default: 'amount' },
+    current: { type: [Number, String], default: null },
+    base: { type: [Number, String], default: null },
+    direction: { type: String, default: 'none' },
+    isRatioRaw: { type: Boolean, default: false },
+    /** 输入单位已是「亿元」(如 △EVE), 不再做 万/亿 换算 */
+    isYi: { type: Boolean, default: false }
+  },
+  render(h, ctx) {
+    const { kind, current, base, direction, isRatioRaw, isYi } = ctx.props
+    if (current == null || base == null) return h('span')
+    const c = Number(current), b = Number(base)
+    if (isNaN(c) || isNaN(b)) return h('span')
+    const diff = c - b
+    let text = ''
+    if (kind === 'ratio') {
+      const cur = isRatioRaw ? c : c * 100
+      const bas = isRatioRaw ? b : b * 100
+      const d = cur - bas
+      text = (d > 0 ? '+' : '') + d.toFixed(2) + 'pp'
+    } else {
+      if (b === 0) return h('span')
+      const ratio = diff / Math.abs(b) * 100
+      text = (ratio > 0 ? '+' : '') + ratio.toFixed(2) + '%'
+    }
+    let cls = 'cmp-none'
+    if (direction === 'higher') cls = diff > 0 ? 'cmp-up' : (diff < 0 ? 'cmp-down' : 'cmp-none')
+    else if (direction === 'lower') cls = diff < 0 ? 'cmp-up' : (diff > 0 ? 'cmp-down' : 'cmp-none')
+    else cls = diff > 0 ? 'cmp-blue' : (diff < 0 ? 'cmp-orange' : 'cmp-none')
+    const baseText = kind === 'ratio'
+      ? (isRatioRaw ? b.toFixed(2) + '%' : (b * 100).toFixed(2) + '%')
+      : (isYi ? b.toFixed(2) + ' 亿' : fmtMoneyVal(b))
+    return h('span', { class: 'cmp-tag ' + cls }, [`基期 ${baseText} · ${text}`])
+  }
+}
+
 export default {
   name: 'ReverseDashboardPanels',
-  components: { VChart },
+  components: { VChart, KpiCompare },
   data() {
     return {
       loading: false,
@@ -712,13 +782,7 @@ export default {
      * @param {number} v 金额 (元)
      * @returns {string} 格式化字符串
      */
-    fmtMoney(v) {
-      if (v == null) return '-'
-      const a = Math.abs(Number(v))
-      if (a >= 1e8) return (v / 1e8).toFixed(2) + ' 亿'
-      if (a >= 1e4) return (v / 1e4).toFixed(2) + ' 万'
-      return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
-    },
+    fmtMoney(v) { return fmtMoneyVal(v) },
     /**
      * <p>EVE 金额格式化 (固定保留 2 位小数 + "亿" 单位, 已在 snapshot 中是亿元)</p>
      *
@@ -777,34 +841,6 @@ export default {
      * @param {boolean} [isRatioRaw] 输入是否已是百分数 (避免 ×100)
      * @returns {string} 对比文本
      */
-    compareTag(kind, current, base, direction, isRatioRaw) {
-      if (current == null || base == null) return ''
-      const c = Number(current), b = Number(base)
-      if (isNaN(c) || isNaN(b)) return ''
-      const diff = c - b
-      const sign = diff > 0 ? '+' : (diff < 0 ? '' : '')
-      let text = ''
-      if (kind === 'ratio') {
-        // 比率型: 百分点差
-        const cur = isRatioRaw ? c : c * 100
-        const bas = isRatioRaw ? b : b * 100
-        const d = cur - bas
-        text = (d > 0 ? '+' : '') + d.toFixed(2) + 'pp'
-      } else {
-        // 金额型: 变化率
-        if (b === 0) return ''
-        const ratio = diff / Math.abs(b) * 100
-        text = (ratio > 0 ? '+' : '') + ratio.toFixed(2) + '%'
-      }
-      let cls = 'cmp-none'
-      if (direction === 'higher') cls = diff > 0 ? 'cmp-up' : (diff < 0 ? 'cmp-down' : 'cmp-none')
-      else if (direction === 'lower') cls = diff < 0 ? 'cmp-up' : (diff > 0 ? 'cmp-down' : 'cmp-none')
-      else cls = diff > 0 ? 'cmp-blue' : (diff < 0 ? 'cmp-orange' : 'cmp-none')
-      const baseText = kind === 'ratio'
-        ? (isRatioRaw ? b.toFixed(2) + '%' : (b * 100).toFixed(2) + '%')
-        : this.fmtMoney(b)
-      return `<span class="cmp-tag ${cls}">基期 ${baseText} · ${text}</span>`
-    },
     /**
      * <p>指标类型 → 中文标签</p>
      * @param {string} m 指标类型 (ROE/CET1/LCR/NSFR/DELTA_EVE)
@@ -1259,23 +1295,35 @@ export default {
   border-bottom: 1px solid #f5f7fa;
 }
 .target-row:last-child { border-bottom: none; }
+/* ===== 目标达成表格列宽 (表头与数据行共用, 保证对齐) ===== */
+.tc-name     { flex: 0 0 200px; width: 200px; }
+.tc-target   { flex: 0 0 120px; width: 120px; }
+.tc-actual   { flex: 0 0 120px; width: 120px; }
+.tc-progress { flex: 1 1 auto; min-width: 140px; width: 100%; }
+.tc-rate     { flex: 0 0 120px; width: 120px; text-align: right; }
+.tc-m12      { flex: 0 0 130px; width: 130px; text-align: right; }
 .target-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .target-val { color: #606266; }
 .target-actual { font-weight: 600; }
+/* el-progress 根节点默认无宽度, 必须显式撑满, 否则在 flex 里塌成 0 宽度不可见 */
 .target-progress { padding-right: 16px; }
-.target-rate { text-align: right; font-size: 12px; }
+.target-progress >>> .el-progress { width: 100%; }
+.target-rate { text-align: right; font-size: 12px; white-space: nowrap; }
 .rate-ok { color: #52c41a; font-weight: 600; }
 .rate-bad { color: #f5222d; font-weight: 600; }
 .rate-none { color: #909399; }
 
 /* ===== KPI 基期对比标签 ===== */
 .kpi-compare { margin-top: 4px; font-size: 11px; line-height: 1.4; }
-.cmp-tag { white-space: nowrap; }
-.cmp-up { color: #52c41a; }
-.cmp-down { color: #f5222d; }
-.cmp-blue { color: #1890ff; }
-.cmp-orange { color: #fa8c16; }
-.cmp-none { color: #8f959e; }
+/* 注意: KpiCompare 是函数式组件, h() 创建的节点没有 data-v 属性,
+   scoped 选择器 (.cmp-up[data-v-x]) 匹配不上 → 必须用深度选择器,
+   编译后为 .kpi-compare[data-v-x] .cmp-up, 只要求祖先带 data-v 即可。 */
+.kpi-compare >>> .cmp-tag { white-space: nowrap; }
+.kpi-compare >>> .cmp-up { color: #52c41a; }
+.kpi-compare >>> .cmp-down { color: #f5222d; }
+.kpi-compare >>> .cmp-blue { color: #1890ff; }
+.kpi-compare >>> .cmp-orange { color: #fa8c16; }
+.kpi-compare >>> .cmp-none { color: #8f959e; }
 
 /* ===== 末级节点余额（区块 5/6）===== */
 .balance-controls { display: flex; gap: 8px; align-items: center; }
