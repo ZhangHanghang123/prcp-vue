@@ -927,14 +927,22 @@ export default {
       this.renderBalanceTrend()
     },
     /**
-     * <p>末级节点余额横向条形图 (按 |余额| 降序, 按大类着色)</p>
+     * <p>末级节点余额横向条形图 (按 |余额| 降序, 金额大的在顶部, 按大类着色)</p>
+     *
+     * <p>注意: ECharts 横向条形图的 y 轴 (category) 是<strong>自下而上</strong>排列的,
+     * 即数组第 0 项显示在最下方。要让金额大的排在顶部, 必须把降序数组再反转一次。
+     * (原系统 ReverseDashboard.tsx 的注释写的是「倒序绘制, 使最大条在顶部」,
+     *  但代码里漏了 reverse, 实际效果与注释不符 — 此处按注释的意图实现)</p>
      */
     renderBalanceBar() {
       if (!this.$refs.balanceBarChart) return
       if (!this.balanceBarChart) this.balanceBarChart = echarts.init(this.$refs.balanceBarChart)
       let rows = this.leafBalances
       if (this.balanceFilterCat) rows = rows.filter(r => r.category === this.balanceFilterCat)
+      // leafBalances 已按 |余额| 降序; 反转后 y 轴自下而上绘制 → 金额大的显示在顶部
+      rows = rows.slice().reverse()
       const useBase = this.balanceMode === 'base'
+      const bDate = useBase ? this.catDist.balance_date : this.catDist.forecast_date
       this.balanceBarChart.setOption({
         tooltip: {
           trigger: 'item',
@@ -942,7 +950,8 @@ export default {
             const r = rows[p.dataIndex]
             if (!r) return ''
             return `${r.code} · ${r.name}<br/>大类：${this.catLabel(r.category)}<br/>` +
-                   `${useBase ? '基准日当前余额' : '当月预测余额'}：<b>${this.fmtMoney(r.value)}</b>`
+                   `${useBase ? '基准日当前余额' : '当月预测余额'}：<b>${this.fmtMoney(r.value)}</b>` +
+                   (bDate ? `<br/>${useBase ? '基准日' : '预测月'}：${bDate}` : '')
           }
         },
         grid: { left: 220, right: 110, top: 20, bottom: 56 },
