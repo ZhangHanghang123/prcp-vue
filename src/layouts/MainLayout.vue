@@ -25,6 +25,7 @@
       <!-- 侧边栏：二级菜单 -->
       <el-aside width="220px" class="aside">
         <el-menu
+          ref="asideMenu"
           :default-active="$route.path"
           :default-openeds="openedGroups"
           router
@@ -176,12 +177,72 @@ export default {
         }
       ]
     },
-    // 默认展开所有分组（可根据用户喜好改成记忆展开）
+    /**
+     * <p>当前路由所属的菜单分组</p>
+     *
+     * @returns {Object|null} 命中的分组, 无匹配则 null
+     */
+    currentGroup() {
+      const cur = this.$route.path
+      return this.menuGroups.find(g => g.children.some(c => this.isActivePath(c.path, cur))) || null
+    },
+    /**
+     * <p>默认展开的分组 — 只展开【当前路由所在】的那一个, 其余保持收起</p>
+     *
+     * <p>对齐原系统 (React + antd): antd Menu 未设 defaultOpenKeys 时,
+     * 默认只展开当前选中项所在的 SubMenu, 其余折叠。</p>
+     *
+     * <p>注意: el-menu 的 default-openeds 仅在初始化时生效,
+     * 路由切换后需由 syncMenuOpened() 主动 open/close。</p>
+     *
+     * @returns {string[]} 展开的分组标题
+     */
     openedGroups() {
-      return this.menuGroups.map(g => g.title)
+      const g = this.currentGroup
+      return g ? [g.title] : []
+    }
+  },
+  watch: {
+    // 路由切换 → 收起其它分组, 只展开当前所在分组
+    '$route.path'() {
+      this.$nextTick(() => this.syncMenuOpened())
     }
   },
   methods: {
+    /**
+     * <p>菜单路径匹配 (忽略 query, 支持子路径)</p>
+     *
+     * @param {string} menuPath 菜单项路径 (可带 query)
+     * @param {string} curPath  当前路由路径
+     * @returns {boolean} 是否命中
+     */
+    isActivePath(menuPath, curPath) {
+      if (!menuPath || !curPath) return false
+      const mp = menuPath.split('?')[0]
+      const cp = curPath.split('?')[0]
+      if (mp === cp) return true
+      return cp.startsWith(mp + '/')
+    },
+    /**
+     * <p>同步侧边栏展开状态 — 只保留当前所在分组展开</p>
+     *
+     * <p>el-menu 的 default-openeds 只在初始化时生效, 路由切换后需主动 open/close。</p>
+     *
+     * @returns {void}
+     */
+    syncMenuOpened() {
+      const menu = this.$refs.asideMenu
+      if (!menu) return
+      const cur = this.currentGroup
+      this.menuGroups.forEach(g => {
+        // 单项分组渲染成 el-menu-item, 不是 submenu, 无需 open/close
+        if (g.children.length <= 1) return
+        try {
+          if (cur && g.title === cur.title) menu.open(g.title)
+          else menu.close(g.title)
+        } catch (e) { /* 分组不存在时忽略 */ }
+      })
+    },
     /**
      * <p>顶部用户下拉菜单命令处理 (logout → 退出登录)</p>
      *
