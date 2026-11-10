@@ -241,7 +241,7 @@
             <template #default="{ row }">{{ fmtMoney(row.current_balance) }}</template>
           </el-table-column>
           <el-table-column label="平均利率%" width="100" align="right">
-            <template #default="{ row }">{{ pctOrDash(row.weighted_rate, 2) }}</template>
+            <template #default="{ row }">{{ pctOrDash(loanRatePct(row.weighted_rate), 2) }}</template>
           </el-table-column>
           <el-table-column label="月均余额（元）" width="150" align="right">
             <template #default="{ row }">{{ fmtMoney(row.avg_balance) }}</template>

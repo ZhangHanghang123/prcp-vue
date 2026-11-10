@@ -26,7 +26,7 @@
         <el-card shadow="never" class="kpi-card" :body-style="{padding:'12px 16px'}">
           <div class="kpi-label">{{ cat.category }}（{{ cat.account_count }} 账户）</div>
           <div class="kpi-value">{{ fmtMoney(cat.total_amount) }}</div>
-          <div class="kpi-sub">加权利率 {{ Number(cat.weighted_rate).toFixed(4) }}% | 资本占用 {{ Number(cat.weighted_capital).toFixed(2) }}% | 风险权重 {{ Number(cat.weighted_risk_weight).toFixed(2) }}%</div>
+          <div class="kpi-sub">加权利率 {{ pctOf(cat.weighted_rate) }} | 资本占用 {{ pctOf(cat.weighted_capital) }} | 风险权重 {{ pctOf(cat.weighted_risk_weight) }}</div>
         </el-card>
       </el-col>
     </el-row>
@@ -55,16 +55,16 @@
             <template slot-scope="s">{{ fmtMoney(getMeasure(s.row, m, 'avg_balance')) }}</template>
           </el-table-column>
           <el-table-column label="利率%" align="right" width="80">
-            <template slot-scope="s">{{ fmtNum(getMeasure(s.row, m, 'interest_rate'), 4) }}</template>
+            <template slot-scope="s">{{ pctOf(getMeasure(s.row, m, 'interest_rate'), 4) }}</template>
           </el-table-column>
           <el-table-column label="利息" align="right" width="100">
             <template slot-scope="s">{{ fmtMoney(getMeasure(s.row, m, 'interest_amount')) }}</template>
           </el-table-column>
           <el-table-column label="资本%" align="right" width="80">
-            <template slot-scope="s">{{ fmtNum(getMeasure(s.row, m, 'capital_ratio'), 2) }}</template>
+            <template slot-scope="s">{{ pctOf(getMeasure(s.row, m, 'capital_ratio'), 2) }}</template>
           </el-table-column>
           <el-table-column label="风险%" align="right" width="80">
-            <template slot-scope="s">{{ fmtNum(getMeasure(s.row, m, 'risk_weight'), 2) }}</template>
+            <template slot-scope="s">{{ pctOf(getMeasure(s.row, m, 'risk_weight'), 2) }}</template>
           </el-table-column>
         </el-table-column>
       </el-table>
@@ -135,6 +135,17 @@ export default {
      * @returns {string} 格式化字符串
      */
     fmtMoney(v) { if (v == null) return '-'; return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 }) },
+    /**
+     * <p>小数比率 → 百分数字符串</p>
+     *
+     * <p>库中 weighted_rate / capital_ratio / risk_weight 均为 0~1 小数
+     * (如 0.0325 = 3.25%), 直接 toFixed 会显示成 0.0325%, 需 ×100。</p>
+     *
+     * @param {number} v 小数比率
+     * @param {number} [p=2] 小数位数
+     * @returns {string} 百分比字符串
+     */
+    pctOf(v, p = 2) { if (v == null) return '-'; return (Number(v) * 100).toFixed(p) + '%' },
     /**
      * <p>数值格式化 (保留 p 位小数)</p>
      *
