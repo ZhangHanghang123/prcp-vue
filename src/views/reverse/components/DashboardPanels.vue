@@ -203,6 +203,22 @@
       <el-card shadow="never" class="trend-card">
         <div slot="header" class="trend-header">
           <span><i class="el-icon-time"></i> 5 指标 24 月趋势</span>
+          <div class="trend-metric-picker">
+            <label
+              v-for="m in TREND_METRICS"
+              :key="m.key"
+              class="trend-metric-chip"
+              :class="{ 'is-on': trendMetrics.includes(m.key) }"
+              :style="trendMetrics.includes(m.key) ? { borderColor: m.color, color: m.color, background: m.color + '14' } : {}">
+              <input
+                type="checkbox"
+                class="trend-metric-input"
+                :checked="trendMetrics.includes(m.key)"
+                @change="toggleTrendMetric(m.key, $event.target.checked)" />
+              <i class="trend-metric-dot" :style="{ background: m.color }"></i>
+              {{ m.label }}
+            </label>
+          </div>
         </div>
         <v-chart v-if="!loading && trendOption" :options="trendOption" :autoresize="true" class="full-chart" />
       </el-card>
@@ -335,6 +351,22 @@
 import * as echarts from 'echarts'
 import VChart from '@/components/VChart.vue'
 import { COLOR_PRIMARY, PALETTE_AUX, CATEGORY_COLORS, AXIS_COLORS, WARNING_LINE_STYLE, BASELINE_LINE_STYLE } from '@/utils/chartTheme'
+
+/**
+ * <p>趋势图指标元数据</p>
+ *
+ * <p>5 个指标量级差 100 倍 (LCR 148 vs ROE 12), 全开时 ROE/CET1 会被压成直线,
+ * 因此默认只勾 ROE, 由用户在图头上切换。</p>
+ *
+ * <p>axis: 0 = 左轴 (%), 1 = 右轴 (亿) —— △EVE 单位是「亿」, 其余是「%」。</p>
+ */
+const TREND_METRICS = [
+  { key: 'ROE',       color: '#722ed1', label: 'ROE',   axis: 0 },
+  { key: 'CET1',      color: '#1890ff', label: 'CET1',  axis: 0 },
+  { key: 'LCR',       color: '#52c41a', label: 'LCR',   axis: 0 },
+  { key: 'NSFR',      color: '#13c2c2', label: 'NSFR',  axis: 0 },
+  { key: 'DELTA_EVE', color: '#eb2f96', label: '△EVE',  axis: 1 }
+]
 
 /**
  * @file 反算驾驶舱面板 (reverse/Index.vue 的 Tab 3 子组件)
@@ -482,6 +514,9 @@ export default {
       filter: { schemeCode: null, runId: null, dateOffset: 1 },
       radarChart: null,
       _rerenderTimer: null,
+      // ===== 趋势图指标开关 (默认只显示 ROE) =====
+      TREND_METRICS,
+      trendMetrics: ['ROE'],
       // ===== 目标达成 =====
       // ===== 余额口径 =====
       balanceMode: 'base',
@@ -545,14 +580,9 @@ export default {
     trendOption() {
       const t = this.snapshot.trend || {}
       const months = t.months || []
-      // △EVE 单位是「亿」, 其余 4 个是「%」, 量级差 100 倍 → 单独挂右轴
-      const metricSeries = [
-        { key: 'ROE',        color: '#722ed1', label: 'ROE',   axis: 0 },
-        { key: 'CET1',       color: '#1890ff', label: 'CET1',  axis: 0 },
-        { key: 'LCR',        color: '#52c41a', label: 'LCR',   axis: 0 },
-        { key: 'NSFR',       color: '#13c2c2', label: 'NSFR',  axis: 0 },
-        { key: 'DELTA_EVE',  color: '#eb2f96', label: '△EVE',  axis: 1 }
-      ]
+      // 只渲染用户勾选的指标 (默认只勾 ROE):
+      // 5 条线量级差 100 倍 (LCR 148 vs ROE 12), 全开时 ROE/CET1 会被压成直线
+      const metricSeries = TREND_METRICS.filter(m => this.trendMetrics.includes(m.key))
       const series = metricSeries.map(s => ({
         name: s.label,
         type: 'line',
@@ -565,8 +595,24 @@ export default {
         emphasis: { focus: 'series' },
         data: t[s.key] || []
       }))
+      // 浮窗: 指标值 + 单位 (% / 亿)
+      const unitOf = k => (k === 'DELTA_EVE' ? ' 亿' : '%')
       return {
-        tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross' },
+          formatter: (params) => {
+            if (!params || !params.length) return ''
+            const month = params[0].axisValue
+            const lines = params.map(p => {
+              const m = TREND_METRICS.find(x => x.label === p.seriesName)
+              const unit = m ? unitOf(m.key) : ''
+              const val = p.value == null ? '-' : Number(p.value).toFixed(2)
+              return `${p.marker}${p.seriesName}: <b>${val}${unit}</b>`
+            })
+            return `<b>${month}</b><br/>${lines.join('<br/>')}`
+          }
+        },
         legend: { data: metricSeries.map(s => s.label), top: 0, right: 0, textStyle: { fontSize: 11 } },
         grid: { left: 55, right: 55, top: 40, bottom: 45 },
         // 注意: yAxis 为数组时, xAxis 也必须是数组, 否则 ECharts 5 无法配对 → 图表整体空白
@@ -755,6 +801,26 @@ export default {
     },
     /** 月份切换 — 直接 reload snapshot */
     onDateChange() { this.loadSnapshot() },
+    /**
+     * <p>趋势图指标勾选切换</p>
+     *
+     * <p>由 el-checkbox 的 @change 传入新勾选状态; 至少保留 1 个指标,
+     * 全部取消时自动回落到 ROE (避免空图)。</p>
+     *
+     * @param {string} key  指标 key (ROE/CET1/LCR/NSFR/DELTA_EVE)
+     * @param {boolean} next 新的勾选状态
+     * @returns {void}
+     */
+    toggleTrendMetric(key, next) {
+      const i = this.trendMetrics.indexOf(key)
+      const on = next === undefined ? i < 0 : !!next
+      if (on) {
+        if (i < 0) this.trendMetrics.push(key)
+      } else if (i >= 0) {
+        this.trendMetrics.splice(i, 1)
+        if (!this.trendMetrics.length) this.trendMetrics.push('ROE')
+      }
+    },
     /**
      * <p>余额口径切换 (基准日当前余额 / 当月预测余额)</p>
      *
@@ -1204,13 +1270,27 @@ export default {
         if (suffix === 'EVE') return v.toFixed(2) + ' 亿'
         return v.toFixed(2) + '%'
       }
+      // 图例索引表: 图例名 → 指标下标
+      const legendIdx = {}
+      labels.forEach((l, i) => { legendIdx[l] = i })
+      // 评分档位配色 (对齐原系统 ScoreTag: 480+ 绿 / 300+ 青 / 150+ 金 / 0+ 橙 / 0 红)
+      const scoreColor = (sc) => {
+        if (sc >= 480) return '#52c41a'
+        if (sc >= 300) return '#13c2c2'
+        if (sc >= 150) return '#faad14'
+        if (sc > 0) return '#fa8c16'
+        return '#f5222d'
+      }
       this.radarChart.setOption({
         tooltip: {
           trigger: 'item',
           formatter: () => {
+            // 浮窗列出全部 5 指标的「指标值 + 评分」, 与图例分数一致
             const lines = labels.map((label, i) => {
               const seg = segOf[i]
-              return `${LONG_LABELS[label]}: <b>${fmtMetricValue(label, valueOf[i])}</b>` +
+              const color = scoreColor(scoreOf[i])
+              return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:4px"></span>` +
+                     `${LONG_LABELS[label]}: <b>${fmtMetricValue(label, valueOf[i])}</b>` +
                      `　评分 <b>${scoreOf[i].toFixed(0)}</b>/${MAX_SCORE}` +
                      (seg ? `　${seg}` : '')
             })
@@ -1220,7 +1300,18 @@ export default {
         legend: {
           bottom: 0,
           textStyle: { fontSize: 11 },
-          data: ['当前评分 (0-500)']
+          itemWidth: 10,
+          itemHeight: 10,
+          // 图例按指标列出各自分数, 并按评分档位着色 (对齐原系统 ScoreTag 配色)
+          formatter: (name) => {
+            const i = legendIdx[name]
+            if (i == null) return name
+            return `${name} ${scoreOf[i].toFixed(0)}`
+          },
+          data: labels.map((label, i) => ({
+            name: label,
+            itemStyle: { color: scoreColor(scoreOf[i]) }
+          }))
         },
         radar: {
           indicator: labels.map(k => ({ name: LONG_LABELS[k], max: MAX_SCORE })),
@@ -1233,16 +1324,41 @@ export default {
           splitLine: { lineStyle: { color: '#D9E5F7' } },
           axisLine: { lineStyle: { color: '#C8D5EC' } }
         },
-        series: [{
-          type: 'radar',
-          data: [{
-            value: values,
-            name: '当前评分 (0-500)',
-            areaStyle: { color: 'rgba(91, 143, 249, 0.35)' },
+        // ⚠️ ECharts 的 radar series 不支持 legend (legend 只绑定 series.name),
+        //    故拆成 5 个「单指标」series —— 每个指标一个, 只有自己那一维有值 ('-' 表示空点),
+        //    这样图例可显示 5 个指标并支持点击开关。
+        //    但单指标 series 连线会形成星芒形, 故额外叠加一个「完整轮廓」series (不参与图例),
+        //    让雷达轮廓保持完整五边形。
+        series: [
+          // ① 完整轮廓 (legend 里不显示)
+          {
+            type: 'radar',
+            name: '评分轮廓',
+            symbol: 'none',
             lineStyle: { color: '#5B8FF9', width: 2 },
-            itemStyle: { color: '#5B8FF9' }
-          }]
-        }]
+            itemStyle: { color: '#5B8FF9' },
+            areaStyle: { color: 'rgba(91, 143, 249, 0.28)' },
+            data: [{ value: values, name: '评分轮廓', symbol: 'none' }]
+          },
+          // ② 5 个单指标 series (参与图例, 顶点用档位色)
+          ...labels.map((label, i) => ({
+            type: 'radar',
+            name: label,
+            symbol: 'circle',
+            symbolSize: 8,
+            lineStyle: { color: 'transparent', width: 0 },
+            itemStyle: { color: scoreColor(scoreOf[i]) },
+            areaStyle: { color: 'transparent' },
+            data: [{
+              value: labels.map((_, j) => (j === i ? scoreOf[i] : '-')),
+              name: label,
+              symbol: 'circle',
+              symbolSize: 9,
+              lineStyle: { color: 'transparent', width: 0 },
+              itemStyle: { color: scoreColor(scoreOf[i]), borderColor: '#fff', borderWidth: 1.5 }
+            }]
+          }))
+        ]
       }, true)
     },
 
@@ -1523,6 +1639,50 @@ export default {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 14px; font-weight: 500;
 }
+
+/* 趋势图指标切换 (自绘 chip, 完全受控) */
+.trend-metric-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+}
+.trend-metric-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid #E3E9F2;
+  background: #F7F9FC;
+  color: #6C7D96;
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s;
+}
+.trend-metric-chip:hover { border-color: #B5D4F4; }
+.trend-metric-chip.is-on { font-weight: 500; }
+/* 原生 checkbox 透明覆盖整个 chip: 既保留原生 label/change 行为, 又不显示默认方框 */
+.trend-metric-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.trend-metric-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  opacity: .35;
+  transition: opacity .15s;
+}
+.trend-metric-chip.is-on .trend-metric-dot { opacity: 1; }
 
 /* 小屏适配 */
 @media (max-width: 1200px) {
