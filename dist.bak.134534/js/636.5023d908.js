@@ -1,1 +1,0 @@
-"use strict";(self["webpackChunkprcp_vue"]=self["webpackChunkprcp_vue"]||[]).push([[636],{2636:function(t,h,p){var u=p(83276);const e={login:t=>u.A.post("/auth/login",t),health:()=>u.A.post("/auth/health")};p.d(h,["authApi",0,e])}}]);
