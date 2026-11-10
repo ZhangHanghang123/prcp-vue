@@ -231,32 +231,43 @@
       </el-card>
     </div>
 
-    <!-- Row 3: Top 10 节点（按当前余额绝对值）+ 大类分布（左右两列） -->
+    <!-- Row 3: 末级节点余额排行（全部末级节点, 按规模降序）+ 大类分布（左右两列） -->
     <div class="bottom-row twocol-row">
       <el-card shadow="never">
         <div slot="header" class="trend-header">
           <span>
-            <i class="el-icon-trophy"></i> Top 10 节点（按当前余额绝对值）
-            <el-tag size="mini" effect="plain" type="info" style="margin-left:6px">全部账户册方案</el-tag>
+            <i class="el-icon-trophy"></i> 末级节点余额排行
+            <el-tag size="mini" effect="plain" type="info" style="margin-left:6px">
+              全部账户册方案 · {{ leafNodesRanked.length }} 个末级节点
+            </el-tag>
           </span>
         </div>
-        <el-table :data="topNodes" size="mini" stripe border max-height="320">
-          <el-table-column label="账户册方案" width="130" show-overflow-tooltip>
+        <el-table :data="leafNodesRanked" size="mini" stripe border max-height="420"
+                  :default-sort="{ prop: 'absBalance', order: 'descending' }">
+          <el-table-column label="#" width="46" align="center">
+            <template #default="{ $index }">{{ $index + 1 }}</template>
+          </el-table-column>
+          <el-table-column label="账户册方案" width="110" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tag size="mini" effect="plain" type="info">{{ row.coa_scheme_code || '-' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="节点" min-width="180" show-overflow-tooltip>
+          <el-table-column label="节点" min-width="170" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tooltip :content="row.node_code" placement="top">
                 <span>{{ row.node_name || row.node_code }}</span>
               </el-tooltip>
             </template>
           </el-table-column>
+          <el-table-column label="大类" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag size="mini" effect="plain" :type="catTagType(row.category)">{{ catLabel(row.category) }}</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="当前余额（元）" width="150" align="right">
             <template #default="{ row }">{{ fmtMoney(row.current_balance) }}</template>
           </el-table-column>
-          <el-table-column label="平均利率%" width="100" align="right">
+          <el-table-column label="平均利率%" width="90" align="right">
             <template #default="{ row }">{{ pctOrDash(loanRatePct(row.weighted_rate), 2) }}</template>
           </el-table-column>
           <el-table-column label="月均余额（元）" width="150" align="right">
@@ -375,7 +386,7 @@ const TREND_METRICS = [
  *         2) 目标达成进度卡片 (目标/实际/进度条/当前完成率/M12 完成率)
  *         3) 8 KPI 卡 (4 列 × 2 行: 资产/负债/贷款加权利率/ROE/CET1/LCR/NSFR/△EVE, 含基期对比)
  *         4) 双栏: 5 指标 24 月趋势 + 5 指标评分雷达
- *         5) 双栏: Top 10 节点 + 大类分布 (环形 + 柱图)
+ *         5) 双栏: 末级节点余额排行 (全部末级节点, 按规模降序) + 大类分布 (环形 + 柱图)
  *         6) 全宽: 末级节点余额分布 (横向条形 + 基准日/预测口径切换)
  *         7) 全宽: 末级账户册余额走势 (大类汇总 / 节点明细 TopN)
  *       直接调后端 /prcp-java/api/reverse-dashboard/{options,runs,dates,snapshot,balance-trend} 5 端点, 带 Bearer Token。
@@ -537,7 +548,6 @@ export default {
     /** 基期 KPI (date_offset=1) — 用于 KPI 卡的「基期 vs 当前」对比 */
     kpiBase() { return this.snapshot.kpi_base || {} },
     thresholds() { return this.snapshot.thresholds || {} },
-    topNodes() { return this.snapshot.top_nodes || [] },
     riskAlerts() { return this.snapshot.risk_alerts || [] },
     nodeMatrix() { return this.snapshot.node_matrix || [] },
     targets() { return this.snapshot.targets || [] },
@@ -545,6 +555,20 @@ export default {
     /** 末级节点（按 is_leaf 标记） */
     leafNodes() {
       return this.nodeMatrix.filter(n => n.is_leaf === true || n.is_leaf === 1)
+    },
+    /**
+     * <p>末级节点余额排行 — 全部末级节点, 按当前余额绝对值从大到小</p>
+     *
+     * <p>后端 top_nodes 已按「仅末级节点 + |余额| 降序」输出 (覆盖全部 COA), 此处只补
+     * absBalance 辅助列供 el-table default-sort 使用。</p>
+     *
+     * @returns {Array<Object>} 排序后的末级节点
+     */
+    leafNodesRanked() {
+      return (this.snapshot.top_nodes || []).map(n => ({
+        ...n,
+        absBalance: Math.abs(Number(n.current_balance || 0)) || 0
+      }))
     },
     /** 末级节点余额（按当前口径） */
     leafBalances() {
