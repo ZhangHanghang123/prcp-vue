@@ -243,38 +243,39 @@
           </span>
         </div>
         <el-table :data="leafNodesRanked" size="mini" stripe border max-height="420"
-                  :default-sort="{ prop: 'absBalance', order: 'descending' }">
-          <el-table-column label="#" width="46" align="center">
+                  :default-sort="{ prop: 'absBalance', order: 'descending' }"
+                  class="node-rank-table">
+          <el-table-column label="#" width="36" align="center">
             <template #default="{ $index }">{{ $index + 1 }}</template>
           </el-table-column>
-          <el-table-column label="账户册方案" width="110" show-overflow-tooltip>
+          <el-table-column label="账户册方案" width="84" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tag size="mini" effect="plain" type="info">{{ row.coa_scheme_code || '-' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="节点" min-width="170" show-overflow-tooltip>
+          <el-table-column label="节点" min-width="100" show-overflow-tooltip>
             <template #default="{ row }">
               <el-tooltip :content="row.node_code" placement="top">
                 <span>{{ row.node_name || row.node_code }}</span>
               </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column label="大类" width="70" align="center">
+          <el-table-column label="大类" width="52" align="center">
             <template #default="{ row }">
               <el-tag size="mini" effect="plain" :type="catTagType(row.category)">{{ catLabel(row.category) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="当前余额（元）" width="150" align="right">
-            <template #default="{ row }">{{ fmtMoney(row.current_balance) }}</template>
+          <el-table-column label="当前余额" width="94" align="right">
+            <template #default="{ row }">{{ fmtYi(row.current_balance) }}</template>
           </el-table-column>
-          <el-table-column label="平均利率%" width="90" align="right">
+          <el-table-column label="平均利率" width="64" align="right">
             <template #default="{ row }">{{ pctOrDash(loanRatePct(row.weighted_rate), 2) }}</template>
           </el-table-column>
-          <el-table-column label="月均余额（元）" width="150" align="right">
-            <template #default="{ row }">{{ fmtMoney(row.avg_balance) }}</template>
+          <el-table-column label="月均余额" width="94" align="right">
+            <template #default="{ row }">{{ fmtYi(row.avg_balance) }}</template>
           </el-table-column>
-          <el-table-column label="利息收支（元）" width="150" align="right">
-            <template #default="{ row }">{{ fmtMoney(row.interest_amount) }}</template>
+          <el-table-column label="利息收支" width="94" align="right">
+            <template #default="{ row }">{{ fmtYi(row.interest_amount) }}</template>
           </el-table-column>
         </el-table>
       </el-card>
@@ -872,6 +873,25 @@ export default {
       const n = Number(v)
       if (isNaN(n)) return null
       return n * 100
+    },
+    /**
+     * <p>金额紧凑格式化 (亿元, 无千分位)</p>
+     *
+     * <p>表格列宽紧张时用: 「32297.85 亿」而非「32,297.85 亿元」, 省掉千分位与「元」字,
+     * 让 8 列在 620px 内全部露出。金额过亿时保留 1 位小数即可。</p>
+     *
+     * @param {number} v 金额 (元)
+     * @returns {string} 紧凑金额字符串
+     */
+    fmtYi(v) {
+      if (v == null) return '-'
+      const n = Number(v)
+      if (isNaN(n)) return '-'
+      const a = Math.abs(n)
+      if (a >= 1e12) return (n / 1e12).toFixed(2) + ' 万亿'
+      if (a >= 1e8) return (n / 1e8).toFixed(1) + ' 亿'
+      if (a >= 1e4) return (n / 1e4).toFixed(1) + ' 万'
+      return n.toFixed(0)
     },
     /**
      * <p>阈值达标状态 (对位原系统 KPI 卡前缀红色箭头)</p>
@@ -1612,6 +1632,39 @@ export default {
 .kpi-compare >>> .cmp-delta { font-weight: 700; }
 
 /* ===== 末级节点余额（区块 5/6）===== */
+/* 节点排行表: 8 列需在 ~620px 内全部露出 → 收紧单元格内边距与字号 */
+.node-rank-table >>> .el-table__cell,
+.node-rank-table >>> .el-table__th {
+  padding: 4px 0;
+}
+.node-rank-table >>> .el-table__cell {
+  font-size: 11px;
+}
+.node-rank-table >>> .el-table__header th {
+  font-size: 11px;
+}
+.node-rank-table >>> .el-tag--mini {
+  padding: 0 4px;
+  height: 18px;
+  line-height: 16px;
+  font-size: 10px;
+}
+.node-rank-table >>> .cell {
+  padding-left: 4px;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.node-rank-table >>> .el-table-column--selection .cell,
+.node-rank-table >>> .cell.el-table__cell--selection {
+  padding-left: 0;
+  padding-right: 0;
+}
+/* 去掉 ElementUI 表格末尾的自动伸缩占位列 (会多占 ~8px) */
+.node-rank-table >>> th.gutter,
+.node-rank-table >>> .gutter {
+  width: 0 !important;
+  padding: 0 !important;
+}
 .balance-controls { display: flex; gap: 8px; align-items: center; }
 .balance-bar-area { width: 100%; height: 420px; }
 .balance-trend-area { width: 100%; height: 420px; }
