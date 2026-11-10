@@ -154,7 +154,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('ROE')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.ROE?.min || 11 }}%</div>
-        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('ROE')" :base="kpiBase.metric_avg?.ROE" direction="higher" /></div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('ROE')" :base="kpiBase.metric_avg?.ROE" direction="higher" :is-ratio-raw="true" /></div>
       </div>
       <!-- CET1 -->
       <div class="kpi-card">
@@ -168,7 +168,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('CET1')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.CET1?.min || 8.5 }}%</div>
-        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('CET1')" :base="kpiBase.metric_avg?.CET1" direction="higher" /></div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('CET1')" :base="kpiBase.metric_avg?.CET1" direction="higher" :is-ratio-raw="true" /></div>
       </div>
       <!-- LCR -->
       <div class="kpi-card">
@@ -182,7 +182,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('LCR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.LCR?.min || 100 }}%</div>
-        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('LCR')" :base="kpiBase.metric_avg?.LCR" direction="higher" /></div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('LCR')" :base="kpiBase.metric_avg?.LCR" direction="higher" :is-ratio-raw="true" /></div>
       </div>
       <!-- NSFR -->
       <div class="kpi-card">
@@ -196,7 +196,7 @@
           <span class="kpi-value">{{ pctOrDash(metricAvg('NSFR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.NSFR?.min || 100 }}%</div>
-        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('NSFR')" :base="kpiBase.metric_avg?.NSFR" direction="higher" /></div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="metricAvg('NSFR')" :base="kpiBase.metric_avg?.NSFR" direction="higher" :is-ratio-raw="true" /></div>
       </div>
       <!-- △EVE -->
       <div class="kpi-card">
@@ -232,10 +232,24 @@
     <div class="bottom-row twocol-row">
       <el-card shadow="never">
         <div slot="header" class="trend-header">
-          <span><i class="el-icon-trophy"></i> Top 10 节点（按当前余额绝对值）</span>
+          <span>
+            <i class="el-icon-trophy"></i> Top 10 节点（按当前余额绝对值）
+            <el-tag size="mini" effect="plain" type="info" style="margin-left:6px">全部账户册方案</el-tag>
+          </span>
         </div>
         <el-table :data="topNodes" size="mini" stripe border max-height="320">
-          <el-table-column label="节点" min-width="180" show-overflow-tooltip prop="node_name" />
+          <el-table-column label="账户册方案" width="130" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tag size="mini" effect="plain" type="info">{{ row.coa_scheme_code || '-' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="节点" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              <el-tooltip :content="row.node_code" placement="top">
+                <span>{{ row.node_name || row.node_code }}</span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
           <el-table-column label="当前余额（元）" width="150" align="right">
             <template #default="{ row }">{{ fmtMoney(row.current_balance) }}</template>
           </el-table-column>
@@ -305,6 +319,7 @@
             <el-select v-model="balanceTrendView" size="mini" style="width:130px" @change="renderBalanceTrend">
               <el-option label="按大类汇总" value="category" />
               <el-option label="按节点明细" value="node" />
+              <el-option label="单节点" value="single" />
             </el-select>
             <el-select v-if="balanceTrendView === 'node'" v-model="balanceTrendTopN" size="mini"
                        style="width:100px" @change="renderBalanceTrend">
@@ -313,6 +328,12 @@
               <el-option label="Top 15" :value="15" />
               <el-option label="Top 20" :value="20" />
               <el-option label="全部" value="all" />
+            </el-select>
+            <el-select v-if="balanceTrendView === 'single'" v-model="balanceTrendSingleCode"
+                       size="mini" filterable placeholder="选择单个节点"
+                       style="width:260px" @change="renderBalanceTrend">
+              <el-option v-for="n in balanceTrendNodeOptions" :key="n.code"
+                         :label="n.name + ' (' + n.code + ')'" :value="n.code" />
             </el-select>
             <el-tag size="mini" effect="plain" type="info">{{ balanceTrendMonths }} 个月</el-tag>
           </div>
@@ -423,25 +444,40 @@ const KpiCompare = {
     const c = Number(current), b = Number(base)
     if (isNaN(c) || isNaN(b)) return h('span')
     const diff = c - b
+
+    // 变化量口径（用户要求）:
+    //   百分比类指标 → 用小数表示差值 (如 ROE 10.00%→10.39% 显示 0.39)
+    //   金额类指标   → 用绝对值表示差额 (如 101310.28 亿→92833.98 亿 显示 -8476.30 亿)
+    let arrow = '→'
     let text = ''
+    let baseText = ''
     if (kind === 'ratio') {
       const cur = isRatioRaw ? c : c * 100
       const bas = isRatioRaw ? b : b * 100
       const d = cur - bas
-      text = (d > 0 ? '+' : '') + d.toFixed(2) + 'pp'
+      arrow = d > 0 ? '↑' : (d < 0 ? '↓' : '→')
+      text = (d > 0 ? '+' : '') + d.toFixed(2)
+      baseText = (isRatioRaw ? b.toFixed(2) + '%' : (b * 100).toFixed(2) + '%')
     } else {
       if (b === 0) return h('span')
-      const ratio = diff / Math.abs(b) * 100
-      text = (ratio > 0 ? '+' : '') + ratio.toFixed(2) + '%'
+      arrow = diff > 0 ? '↑' : (diff < 0 ? '↓' : '→')
+      const abs = Math.abs(diff)
+      const unit = isYi ? ' 亿' : ''
+      const absText = isYi ? abs.toFixed(2) : fmtMoneyVal(abs).replace(/^-/, '')
+      text = (diff > 0 ? '+' : (diff < 0 ? '-' : '')) + absText + unit
+      baseText = isYi ? b.toFixed(2) + ' 亿' : fmtMoneyVal(b)
     }
+
     let cls = 'cmp-none'
     if (direction === 'higher') cls = diff > 0 ? 'cmp-up' : (diff < 0 ? 'cmp-down' : 'cmp-none')
     else if (direction === 'lower') cls = diff < 0 ? 'cmp-up' : (diff > 0 ? 'cmp-down' : 'cmp-none')
     else cls = diff > 0 ? 'cmp-blue' : (diff < 0 ? 'cmp-orange' : 'cmp-none')
-    const baseText = kind === 'ratio'
-      ? (isRatioRaw ? b.toFixed(2) + '%' : (b * 100).toFixed(2) + '%')
-      : (isYi ? b.toFixed(2) + ' 亿' : fmtMoneyVal(b))
-    return h('span', { class: 'cmp-tag ' + cls }, [`基期 ${baseText} · ${text}`])
+
+    return h('span', { class: 'cmp-tag ' + cls }, [
+      '基期 ', h('span', { class: 'cmp-base' }, [baseText]),
+      h('span', { class: 'cmp-arrow ' + cls }, [' ' + arrow]),
+      h('span', { class: 'cmp-delta ' + cls }, [' ' + text])
+    ])
   }
 }
 
@@ -466,6 +502,7 @@ export default {
       balanceTrendChart: null,
       balanceTrendView: 'category',
       balanceTrendTopN: 10,
+      balanceTrendSingleCode: '',
       balanceTrendData: null,
       balanceTrendLoading: false,
       // ===== 导出 =====
@@ -498,6 +535,16 @@ export default {
       return rows.sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
     },
     balanceTrendMonths() { return (this.balanceTrendData && this.balanceTrendData.months || []).length },
+    /** 单节点下拉选项 (末级节点, 按余额规模降序) */
+    balanceTrendNodeOptions() {
+      const ns = (this.balanceTrendData && this.balanceTrendData.nodes) || []
+      return ns.map(n => ({
+        code: n.code,
+        name: n.name || n.code,
+        category: n.category,
+        total: n.total
+      }))
+    },
     categoryOptions() {
       return [
         { value: 'ASSET',       label: '资产' },
@@ -1013,7 +1060,26 @@ export default {
       if (!d || !(d.months || []).length) return
       const months = d.months.map(m => String(m.date || '').slice(0, 7))
       let series = []
-      if (this.balanceTrendView === 'node') {
+      if (this.balanceTrendView === 'single') {
+        // 单节点: 只画选中的那一个节点 (未选中时默认取第一个, 并同步下拉框)
+        const all = d.nodes || []
+        if (!this.balanceTrendSingleCode && all.length) {
+          this.balanceTrendSingleCode = all[0].code
+        }
+        const picked = this.balanceTrendSingleCode
+          ? all.filter(n => n.code === this.balanceTrendSingleCode)
+          : (all.length ? [all[0]] : [])
+        series = picked.map(n => ({
+          name: n.name || n.code,
+          type: 'line',
+          smooth: true,
+          symbolSize: 6,
+          lineStyle: { width: 2.4 },
+          itemStyle: { color: CATEGORY_COLORS[n.category] || '#5B8FF9' },
+          areaStyle: { color: 'rgba(91, 143, 249, 0.12)' },
+          data: n.values || []
+        }))
+      } else if (this.balanceTrendView === 'node') {
         let nodes = d.nodes || []
         if (this.balanceTrendTopN !== 'all') nodes = nodes.slice(0, Number(this.balanceTrendTopN) || 10)
         series = nodes.map(n => ({
@@ -1099,26 +1165,63 @@ export default {
         '△EVE':  'EVE'         // 关键: DB 存的是 'EVE', 不是 'DELTA_EVE'
       }
       const labels = Object.keys(LABEL_TO_KPI)
-      const values = labels.map(label => {
+      // 长标签 (对位原系统 ReverseDashboard.tsx radarOpt)
+      const LONG_LABELS = {
+        'ROE': 'ROE 净资产收益率',
+        'CET1': 'CET1 核心一级',
+        'LCR': 'LCR 流动性覆盖',
+        'NSFR': 'NSFR 净稳定资金',
+        '△EVE': '△EVE 利率风险'
+      }
+      // 取每个指标的 score 与 value (指标值)
+      const scoreOf = labels.map(label => {
         const suffix = LABEL_TO_KPI[label]
         const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
         return s && s.score != null ? Number(s.score) : 0
       })
+      const valueOf = labels.map(label => {
+        const suffix = LABEL_TO_KPI[label]
+        const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
+        return s && s.value != null ? Number(s.value) : null
+      })
+      const segOf = labels.map(label => {
+        const suffix = LABEL_TO_KPI[label]
+        const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
+        return (s && s.segment_desc) || ''
+      })
+      const values = scoreOf
+      // 指标值的展示: 比率型带 %, EVE 为亿元
+      const fmtMetricValue = (label, v) => {
+        if (v == null) return '-'
+        const suffix = LABEL_TO_KPI[label]
+        if (suffix === 'EVE') return v.toFixed(2) + ' 亿'
+        return v.toFixed(2) + '%'
+      }
       this.radarChart.setOption({
         tooltip: {
           trigger: 'item',
-          formatter: (p) => {
-            const lines = p.value.map((v, i) => `${labels[i]}: <b>${v.toFixed(0)}</b> / ${MAX_SCORE}`)
-            return lines.join('<br/>')
+          formatter: () => {
+            const lines = labels.map((label, i) => {
+              const seg = segOf[i]
+              return `${LONG_LABELS[label]}: <b>${fmtMetricValue(label, valueOf[i])}</b>` +
+                     `　评分 <b>${scoreOf[i].toFixed(0)}</b>/${MAX_SCORE}` +
+                     (seg ? `　${seg}` : '')
+            })
+            return `<b>指标评分雷达 (v12b 0-500)</b><br/>${lines.join('<br/>')}`
           }
         },
+        legend: {
+          bottom: 0,
+          textStyle: { fontSize: 11 },
+          data: ['当前评分 (0-500)']
+        },
         radar: {
-          indicator: labels.map(k => ({ name: k, max: MAX_SCORE })),
+          indicator: labels.map(k => ({ name: LONG_LABELS[k], max: MAX_SCORE })),
           shape: 'polygon',
           radius: '62%',
-          center: ['50%', '52%'],
+          center: ['50%', '48%'],
           splitNumber: 5,                                       // 5 段 (0/100/200/300/400/500)
-          axisName: { color: '#25334B', fontSize: 11, fontWeight: 600 },
+          axisName: { color: '#25334B', fontSize: 10, fontWeight: 600 },
           splitArea: { areaStyle: { color: ['rgba(11, 111, 242, 0.04)', 'rgba(11, 111, 242, 0.10)'] } },
           splitLine: { lineStyle: { color: '#D9E5F7' } },
           axisLine: { lineStyle: { color: '#C8D5EC' } }
@@ -1127,7 +1230,7 @@ export default {
           type: 'radar',
           data: [{
             value: values,
-            name: '监管指标评分',
+            name: '当前评分 (0-500)',
             areaStyle: { color: 'rgba(91, 143, 249, 0.35)' },
             lineStyle: { color: '#5B8FF9', width: 2 },
             itemStyle: { color: '#5B8FF9' }
@@ -1379,6 +1482,10 @@ export default {
 .kpi-compare >>> .cmp-blue { color: #1890ff; }
 .kpi-compare >>> .cmp-orange { color: #fa8c16; }
 .kpi-compare >>> .cmp-none { color: #8f959e; }
+/* 基期值: 灰色常量; 箭头 + 差值: 按方向着色 */
+.kpi-compare >>> .cmp-base { color: #8f959e; }
+.kpi-compare >>> .cmp-arrow { font-weight: 700; margin-left: 4px; }
+.kpi-compare >>> .cmp-delta { font-weight: 700; }
 
 /* ===== 末级节点余额（区块 5/6）===== */
 .balance-controls { display: flex; gap: 8px; align-items: center; }
