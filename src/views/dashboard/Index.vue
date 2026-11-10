@@ -181,20 +181,9 @@
 
 <script>
 import { dashboardApi } from '@/api/dashboard'
-import VChart from 'vue-echarts'
 import * as echarts from 'echarts'
+import VChart from '@/components/VChart.vue'
 import { COLOR_PRIMARY, PALETTE_AUX, CATEGORY_COLORS, AXIS_COLORS, WARNING_LINE_STYLE, BASELINE_LINE_STYLE } from '@/utils/chartTheme'
-import 'echarts/lib/chart/line'
-import 'echarts/lib/chart/pie'
-import 'echarts/lib/chart/bar'
-import 'echarts/lib/chart/heatmap'
-import 'echarts/lib/component/tooltip'
-import 'echarts/lib/component/legend'
-import 'echarts/lib/component/grid'
-import 'echarts/lib/component/title'
-import 'echarts/lib/component/markLine'
-import 'echarts/lib/component/visualMap'
-import 'echarts/lib/component/dataZoom'
 
 /**
  * @file 测算方案结果驾驶舱 (反算仪表盘)

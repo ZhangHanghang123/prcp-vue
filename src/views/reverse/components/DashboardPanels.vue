@@ -119,11 +119,6 @@
       <div class="kpi-card kpi-asset">
         <div class="kpi-label"><i class="el-icon-bank-card"></i> 资产余额</div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(kpi.asset_total, kpiBase.asset_total)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(kpi.asset_total, kpiBase.asset_total, 'none')">
-    {{ deltaArrow(kpi.asset_total, kpiBase.asset_total)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ fmtMoney(kpi.asset_total) }}</span>
         </div>
         <div class="kpi-compare"><kpi-compare kind="amount" :current="kpi.asset_total" :base="kpiBase.asset_total" direction="none" /></div>
@@ -132,11 +127,6 @@
       <div class="kpi-card kpi-liability">
         <div class="kpi-label"><i class="el-icon-takeaway-box"></i> 负债余额</div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(kpi.liability_total, kpiBase.liability_total)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(kpi.liability_total, kpiBase.liability_total, 'none')">
-    {{ deltaArrow(kpi.liability_total, kpiBase.liability_total)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ fmtMoney(kpi.liability_total) }}</span>
         </div>
         <div class="kpi-compare"><kpi-compare kind="amount" :current="kpi.liability_total" :base="kpiBase.liability_total" direction="none" /></div>
@@ -145,25 +135,17 @@
       <div class="kpi-card kpi-loan-rate">
         <div class="kpi-label"><i class="el-icon-money"></i> 贷款加权平均利率</div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(kpi.loan_weighted_rate, kpiBase.loan_weighted_rate)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(kpi.loan_weighted_rate, kpiBase.loan_weighted_rate, 'lower')">
-    {{ deltaArrow(kpi.loan_weighted_rate, kpiBase.loan_weighted_rate)==='up' ? '↑' : '↓' }}</i>
-</span>
-          <span class="kpi-value">{{ pctOrDash(kpi.loan_weighted_rate, 4) }}</span>
+          <span class="kpi-value">{{ pctOrDash(loanRatePct(kpi.loan_weighted_rate), 2) }}</span>
         </div>
         <div class="kpi-sub">境内各项人民币贷款下 5 个 L4 子节点按余额加权</div>
-        <div class="kpi-compare"><kpi-compare kind="ratio" :current="kpi.loan_weighted_rate" :base="kpiBase.loan_weighted_rate" direction="lower" :is-ratio-raw="true" /></div>
+        <div class="kpi-compare"><kpi-compare kind="ratio" :current="loanRatePct(kpi.loan_weighted_rate)" :base="loanRatePct(kpiBase.loan_weighted_rate)" direction="lower" :is-ratio-raw="true" /></div>
       </div>
       <!-- ROE 净资产收益率 -->
       <div class="kpi-card">
-        <div class="kpi-label"><i class="el-icon-data-line"></i> ROE 净资产收益率</div>
+        <div class="kpi-label"><i class="el-icon-data-line"></i> ROE 净资产收益率
+          <span :class="thresholdStatusCls(thresholdStatus('ROE', metricAvg('ROE')))">{{ thresholdStatus('ROE', metricAvg('ROE')) }}</span>
+        </div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(metricAvg('ROE'), kpiBase.metric_avg?.ROE)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(metricAvg('ROE'), kpiBase.metric_avg?.ROE, 'higher')">
-    {{ deltaArrow(metricAvg('ROE'), kpiBase.metric_avg?.ROE)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('ROE')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.ROE?.min || 11 }}%</div>
@@ -171,13 +153,10 @@
       </div>
       <!-- CET1 -->
       <div class="kpi-card">
-        <div class="kpi-label"><i class="el-icon-medal"></i> CET1 核心一级</div>
+        <div class="kpi-label"><i class="el-icon-medal"></i> CET1 核心一级
+          <span :class="thresholdStatusCls(thresholdStatus('CET1', metricAvg('CET1')))">{{ thresholdStatus('CET1', metricAvg('CET1')) }}</span>
+        </div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(metricAvg('CET1'), kpiBase.metric_avg?.CET1)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(metricAvg('CET1'), kpiBase.metric_avg?.CET1, 'higher')">
-    {{ deltaArrow(metricAvg('CET1'), kpiBase.metric_avg?.CET1)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('CET1')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.CET1?.min || 8.5 }}%</div>
@@ -185,13 +164,10 @@
       </div>
       <!-- LCR -->
       <div class="kpi-card">
-        <div class="kpi-label"><i class="el-icon-tickets"></i> LCR 流动性覆盖率</div>
+        <div class="kpi-label"><i class="el-icon-tickets"></i> LCR 流动性覆盖率
+          <span :class="thresholdStatusCls(thresholdStatus('LCR', metricAvg('LCR')))">{{ thresholdStatus('LCR', metricAvg('LCR')) }}</span>
+        </div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(metricAvg('LCR'), kpiBase.metric_avg?.LCR)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(metricAvg('LCR'), kpiBase.metric_avg?.LCR, 'higher')">
-    {{ deltaArrow(metricAvg('LCR'), kpiBase.metric_avg?.LCR)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('LCR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.LCR?.min || 100 }}%</div>
@@ -199,13 +175,10 @@
       </div>
       <!-- NSFR -->
       <div class="kpi-card">
-        <div class="kpi-label"><i class="el-icon-files"></i> NSFR 净稳定资金</div>
+        <div class="kpi-label"><i class="el-icon-files"></i> NSFR 净稳定资金
+          <span :class="thresholdStatusCls(thresholdStatus('NSFR', metricAvg('NSFR')))">{{ thresholdStatus('NSFR', metricAvg('NSFR')) }}</span>
+        </div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(metricAvg('NSFR'), kpiBase.metric_avg?.NSFR)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(metricAvg('NSFR'), kpiBase.metric_avg?.NSFR, 'higher')">
-    {{ deltaArrow(metricAvg('NSFR'), kpiBase.metric_avg?.NSFR)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ pctOrDash(metricAvg('NSFR')) }}</span>
         </div>
         <div class="kpi-sub">阈值 ≥ {{ thresholds.NSFR?.min || 100 }}%</div>
@@ -213,13 +186,10 @@
       </div>
       <!-- △EVE -->
       <div class="kpi-card">
-        <div class="kpi-label"><i class="el-icon-warning-outline"></i> △EVE 利率风险</div>
+        <div class="kpi-label"><i class="el-icon-warning-outline"></i> △EVE 利率风险
+          <span :class="thresholdStatusCls(thresholdStatus('DELTA_EVE', metricAvg('DELTA_EVE')))">{{ thresholdStatus('DELTA_EVE', metricAvg('DELTA_EVE')) }}</span>
+        </div>
         <div class="kpi-value-wrap">
-<span class="trend-icon-wrap">
-  <i v-if="deltaArrow(metricAvg('DELTA_EVE'), kpiBase.metric_avg?.DELTA_EVE)!=='flat'"
-     class="trend-icon" :class="deltaArrowCls(metricAvg('DELTA_EVE'), kpiBase.metric_avg?.DELTA_EVE, 'lower')">
-    {{ deltaArrow(metricAvg('DELTA_EVE'), kpiBase.metric_avg?.DELTA_EVE)==='up' ? '↑' : '↓' }}</i>
-</span>
           <span class="kpi-value">{{ fmtMoneyEve(kpi.metric_avg?.DELTA_EVE) }}</span>
           <span class="kpi-unit">亿</span>
         </div>
@@ -362,18 +332,9 @@
 </template>
 
 <script>
-import VChart from 'vue-echarts'
 import * as echarts from 'echarts'
+import VChart from '@/components/VChart.vue'
 import { COLOR_PRIMARY, PALETTE_AUX, CATEGORY_COLORS, AXIS_COLORS, WARNING_LINE_STYLE, BASELINE_LINE_STYLE } from '@/utils/chartTheme'
-import 'echarts/lib/chart/line'
-import 'echarts/lib/chart/pie'
-import 'echarts/lib/chart/bar'
-import 'echarts/lib/chart/radar'
-import 'echarts/lib/component/tooltip'
-import 'echarts/lib/component/legend'
-import 'echarts/lib/component/grid'
-import 'echarts/lib/component/title'
-import 'echarts/lib/component/markLine'
 
 /**
  * @file 反算驾驶舱面板 (reverse/Index.vue 的 Tab 3 子组件)
@@ -490,6 +451,16 @@ const KpiCompare = {
     else if (direction === 'lower') cls = diff < 0 ? 'cmp-up' : (diff > 0 ? 'cmp-down' : 'cmp-none')
     else cls = diff > 0 ? 'cmp-blue' : (diff < 0 ? 'cmp-orange' : 'cmp-none')
 
+    // 变化量四舍五入后为 0 时, 抹掉负号, 避免出现 "-0.00" 这种无意义显示
+    // (如贷款利率基期 3.89% vs 当前 3.8855%, 差值 -0.0045 -> "-0.00")
+    const rounded = parseFloat(text)
+    if (rounded === 0) {
+      text = '0.00'
+      if (direction === 'higher') cls = 'cmp-none'
+      else if (direction === 'lower') cls = 'cmp-none'
+      else cls = 'cmp-none'
+    }
+
     // 方向由主值旁的箭头表达, 这里只给「基期值 + 变化幅度」, 避免同一张卡出现两个箭头
     return h('span', { class: 'cmp-tag ' + cls }, [
       '基期 ', h('span', { class: 'cmp-base' }, [baseText]),
@@ -574,28 +545,32 @@ export default {
     trendOption() {
       const t = this.snapshot.trend || {}
       const months = t.months || []
+      // △EVE 单位是「亿」, 其余 4 个是「%」, 量级差 100 倍 → 单独挂右轴
       const metricSeries = [
-        { key: 'ROE',        color: '#722ed1', label: 'ROE' },
-        { key: 'CET1',       color: '#1890ff', label: 'CET1' },
-        { key: 'LCR',        color: '#52c41a', label: 'LCR' },
-        { key: 'NSFR',       color: '#13c2c2', label: 'NSFR' },
-        { key: 'DELTA_EVE',  color: '#eb2f96', label: '△EVE' }
+        { key: 'ROE',        color: '#722ed1', label: 'ROE',   axis: 0 },
+        { key: 'CET1',       color: '#1890ff', label: 'CET1',  axis: 0 },
+        { key: 'LCR',        color: '#52c41a', label: 'LCR',   axis: 0 },
+        { key: 'NSFR',       color: '#13c2c2', label: 'NSFR',  axis: 0 },
+        { key: 'DELTA_EVE',  color: '#eb2f96', label: '△EVE',  axis: 1 }
       ]
       const series = metricSeries.map(s => ({
         name: s.label,
         type: 'line',
+        yAxisIndex: s.axis,
         smooth: true,
         symbol: 'circle',
         symbolSize: 5,
         lineStyle: { width: 2 },
         itemStyle: { color: s.color },
+        emphasis: { focus: 'series' },
         data: t[s.key] || []
       }))
       return {
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
         legend: { data: metricSeries.map(s => s.label), top: 0, right: 0, textStyle: { fontSize: 11 } },
-        grid: { left: 50, right: 30, top: 40, bottom: 30 },
-        xAxis: { type: 'category', data: months, axisLabel: { fontSize: 10, rotate: 30 } },
+        grid: { left: 55, right: 55, top: 40, bottom: 45 },
+        // 注意: yAxis 为数组时, xAxis 也必须是数组, 否则 ECharts 5 无法配对 → 图表整体空白
+        xAxis: [{ type: 'category', data: months, axisLabel: { fontSize: 10, rotate: 40 } }],
         yAxis: [
           { type: 'value', name: '%', position: 'left', axisLabel: { fontSize: 11 }, splitLine: { lineStyle: { type: 'dashed' } } },
           { type: 'value', name: '亿', position: 'right', axisLabel: { fontSize: 11 }, splitLine: { show: false } }
@@ -793,44 +768,59 @@ export default {
     },
 
     /**
-     * <p>基期对比箭头 (相对基期的变化方向)</p>
+     * <p>贷款加权平均利率: 小数 → 百分数</p>
      *
-     * <p>统一 8 张 KPI 卡的箭头语义: 全部基于【基期 (kpi_base, M1) vs 当前】比较,
-     * 而不是各自的 trend 序列, 保证同一张卡里箭头与「基期 …」行的口径一致。</p>
+     * <p>库中 weighted_rate 存的是小数 (如 0.038855 = 3.89%), 后端 loan_weighted_rate
+     * 也是小数口径; 前端要显示成百分数必须 ×100 — 对齐 Python 原系统
+     * {@code (k.loan_weighted_rate * 100).toFixed(2)}。</p>
      *
-     * @param {number} current   当前值
-     * @param {number} base      基期值
-     * @param {string} direction 'higher' 越高越好 | 'lower' 越低越好 | 'none' 规模类无好坏
-     * @returns {string} 'up' | 'down' | 'flat' (up = 对该指标而言是向好的方向)
+     * @param {number} v 小数利率 (0.038855)
+     * @returns {number|null} 百分数 (3.8855) | null
      */
-    deltaArrow(current, base) {
-      if (current == null || base == null) return 'flat'
-      const c = Number(current), b = Number(base)
-      if (isNaN(c) || isNaN(b)) return 'flat'
-      const diff = c - b
-      if (Math.abs(diff) < 1e-12) return 'flat'
-      // 只表达【数值变化方向】, 不含好坏语义
-      return diff > 0 ? 'up' : 'down'
+    loanRatePct(v) {
+      if (v == null) return null
+      const n = Number(v)
+      if (isNaN(n)) return null
+      return n * 100
     },
     /**
-     * <p>基期对比箭头的样式类</p>
+     * <p>阈值达标状态 (对位原系统 KPI 卡前缀红色箭头)</p>
      *
-     * <p>越高越好: 涨绿跌红; 越低越好: 跌绿涨红; 规模类无好坏: 涨蓝跌橙。</p>
+     * <p>原系统用红色 ↓/↑ 箭头标示「不达标 / 超标」; 这里改用文字徽标, 语义更明确且不与
+     * 「基期变化方向」混淆。</p>
      *
-     * @param {number} current   当前值
-     * @param {number} base      基期值
-     * @param {string} direction 指标方向
+     * <p>判定规则 (与后端 thresholds 一致):</p>
+     * <ul>
+     *   <li>ROE / CET1 / LCR / NSFR — 有下限 min, 低于 min 为不达标</li>
+     *   <li>DELTA_EVE — 有绝对值上限 max_abs, 超过为超标</li>
+     * </ul>
+     *
+     * @param {string} metricKey 'ROE' | 'CET1' | 'LCR' | 'NSFR' | 'DELTA_EVE'
+     * @param {number} value     当前值
+     * @returns {string} '' (达标) | '未达标' | '超标'
+     */
+    thresholdStatus(metricKey, value) {
+      if (value == null) return ''
+      const v = Number(value)
+      if (isNaN(v)) return ''
+      const th = (this.thresholds || {})[metricKey] || {}
+      if (metricKey === 'DELTA_EVE') {
+        const maxAbs = th.max_abs
+        if (maxAbs == null) return ''
+        return Math.abs(v) > Number(maxAbs) ? '超标' : ''
+      }
+      const min = th.min
+      if (min == null) return ''
+      return v < Number(min) ? '未达标' : ''
+    },
+    /**
+     * <p>阈值达标状态对应的徽标样式类</p>
+     *
+     * @param {string} status thresholdStatus 返回值
      * @returns {string} CSS 类名
      */
-    deltaArrowCls(current, base, direction) {
-      const d = this.deltaArrow(current, base)
-      if (d === 'flat') return 'flat'
-      // good = 这次变化对该指标而言是不是好事
-      let good = null
-      if (direction === 'higher') good = d === 'up'
-      else if (direction === 'lower') good = d === 'down'
-      if (good === null) return d === 'up' ? 'trend-blue' : 'trend-orange'   // 规模类: 涨蓝跌橙
-      return good ? 'trend-up' : 'trend-down'                                // 利好绿 / 利空红
+    thresholdStatusCls(status) {
+      return status ? 'kpi-status kpi-status-' + (status === '超标' ? 'bad' : 'warn') : ''
     },
     /**
      * <p>从 kpi.metric_avg 取某个指标均值</p>
@@ -1412,42 +1402,20 @@ export default {
 .kpi-value { font-size: 26px; font-weight: 600; line-height: 1.1; color: #071B4D; }
 .kpi-unit { color: #6C7D96; font-size: 13px; }
 .kpi-sub { color: #6C7D96; font-size: 11px; margin-top: 4px; }
-.trend-icon { font-size: 14px; margin-right: 2px; }
-.trend-up { color: #0B6FF2; }
-.trend-down { color: #C9332B; }
-
-/* 🆕 趋势图标容器: 大号 + 加粗 + 与数值区对齐 */
-.trend-icon-wrap {
+/* 阈值达标状态徽标 (对位原系统 KPI 卡的红色达标箭头) */
+.kpi-status {
   display: inline-flex;
-  align-items: baseline;
-  margin-right: 6px;
-  font-weight: 700;                                      /* 加粗明细 */
-}
-.trend-icon-wrap .trend-icon {
-  font-size: 22px;                                       /* 14 -> 22 (大号) */
-  font-weight: 800;                                      /* 特粗 */
-  margin-right: 2px;
-  line-height: 1;
-}
-.trend-icon-wrap .trend-pct {
-  font-size: 12px;
-  font-weight: 600;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
   margin-left: 2px;
-  opacity: 0.85;
+  white-space: nowrap;
 }
-/* 重新定义颜色: ↑ 绿色, ↓ 红色 (对齐原系统 480+ 绿色 / 0 红色 评分配色) */
-.trend-icon-wrap.up .trend-icon,
-.trend-icon-wrap.up .trend-pct { color: #67C23A; }      /* 绿: Element UI success */
-.trend-icon-wrap.down .trend-icon,
-.trend-icon-wrap.down .trend-pct { color: #F56C6C; }    /* 红: Element UI danger */
-.trend-icon-wrap.flat .trend-icon,
-.trend-icon-wrap.flat .trend-pct { color: #909399; }    /* 灰: Element UI info */
-/* 8 张 KPI 卡统一箭头配色 (颜色类直接挂在图标元素上, 需提高优先级覆盖基础 .trend-up/.trend-down)
-   越高越好 → 涨绿跌红; 越低越好 → 跌绿涨红; 规模类无好坏 → 涨蓝跌橙 */
-.trend-icon-wrap .trend-icon.trend-up { color: #67C23A; }
-.trend-icon-wrap .trend-icon.trend-down { color: #F56C6C; }
-.trend-icon-wrap .trend-icon.trend-blue { color: #1890ff; }
-.trend-icon-wrap .trend-icon.trend-orange { color: #fa8c16; }
+.kpi-status-warn { color: #E6A23C; background: #FDF6EC; border: 1px solid #F5DAB1; }
+.kpi-status-bad  { color: #F56C6C; background: #FEF0F0; border: 1px solid #FBC4BC; }
 .radar-area { width: 100%; height: 200px; }
 .radar-area-large { width: 100%; height: 340px; }
 
