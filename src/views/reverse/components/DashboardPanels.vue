@@ -1257,11 +1257,6 @@ export default {
         const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
         return s && s.value != null ? Number(s.value) : null
       })
-      const segOf = labels.map(label => {
-        const suffix = LABEL_TO_KPI[label]
-        const s = scores.find(x => (x && x.kpi_code || '') === 'REG_' + suffix)
-        return (s && s.segment_desc) || ''
-      })
       const values = scoreOf
       // 指标值的展示: 比率型带 %, EVE 为亿元
       const fmtMetricValue = (label, v) => {
@@ -1285,16 +1280,14 @@ export default {
         tooltip: {
           trigger: 'item',
           formatter: () => {
-            // 浮窗列出全部 5 指标的「指标值 + 评分」, 与图例分数一致
+            // 浮窗只保留「指标值 + 评分」, 不展示档位说明 (档位已由图例/顶点颜色表达)
             const lines = labels.map((label, i) => {
-              const seg = segOf[i]
               const color = scoreColor(scoreOf[i])
               return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:4px"></span>` +
                      `${LONG_LABELS[label]}: <b>${fmtMetricValue(label, valueOf[i])}</b>` +
-                     `　评分 <b>${scoreOf[i].toFixed(0)}</b>/${MAX_SCORE}` +
-                     (seg ? `　${seg}` : '')
+                     `　评分 <b>${scoreOf[i].toFixed(0)}</b>`
             })
-            return `<b>指标评分雷达 (v12b 0-500)</b><br/>${lines.join('<br/>')}`
+            return `<b>指标评分雷达 (0-500)</b><br/>${lines.join('<br/>')}`
           }
         },
         legend: {
