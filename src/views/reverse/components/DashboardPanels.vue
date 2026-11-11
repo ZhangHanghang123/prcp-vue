@@ -1402,8 +1402,11 @@ export default {
     /**
      * <p>导出测算结果 (xlsx) — 对位原系统 ReverseDashboard.tsx handleExport</p>
      *
-     * <p>后端 GET /reverse-dashboard/balance-export 返回二进制流,
-     * 含 4 个 Sheet: 账户册结构 / 按层级汇总 / 末级节点大类汇总 / 口径说明。</p>
+     * <p>后端 GET /reverse-dashboard/balance-export 返回二进制流, 含 5 个 Sheet:
+     * 账户册结构 / 按层级汇总 / 末级节点大类汇总 / <b>当前期指标与评分</b> / 口径说明。</p>
+     *
+     * <p>必须传 <code>date_offset</code> —— 「当前期指标与评分」Sheet 导出的是
+     * 页面上当前所选月份那一期的指标值与分数, 不传则后端取该 Run 的最大 offset, 会与页面不符。</p>
      *
      * @returns {Promise<void>}
      */
@@ -1417,6 +1420,7 @@ export default {
       try {
         const qs = new URLSearchParams({ scheme_code: sc })
         if (this.filter.runId) qs.set('run_id', this.filter.runId)
+        if (this.filter.dateOffset) qs.set('date_offset', this.filter.dateOffset)
         const res = await fetch('/prcp-java/api/reverse-dashboard/balance-export?' + qs.toString(),
           { headers: tokenH() })
         if (!res.ok) {
