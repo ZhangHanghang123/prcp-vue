@@ -134,9 +134,21 @@ export const reverseApi = {
    * <p>增量拉取 Run 日志 (sinceId 游标)</p>
    * @param {number|string} id - Run ID
    * @param {number} [sinceId=0] - 上次拉到的最大日志 ID
-   * @returns {Promise<Array>} 新日志行
+   * @param {Object} [opts={}] - { stage, limit }
+   * @returns {Promise<Object>} { items, count } (items 含 stage/roundNo/algo/roundResult)
    */
-  runLogs: (id, sinceId = 0) => request.get('/reverse/runs/' + id + '/logs', { params: { since_id: sinceId } }),
+  runLogs: (id, sinceId = 0, opts = {}) => request.get('/reverse/runs/' + id + '/logs', {
+    params: { since_id: sinceId, ...opts }
+  }),
+
+  /**
+   * <p>拉取 Run 运行进度 (对位 Python 版 GET /reverse/runs/{id}/progress)</p>
+   * @param {number|string} id - Run ID
+   * @returns {Promise<Object>} { status, done, percent, stage, roundNo, totalRounds,
+   *                              roundsRemaining, roundsCompleted, elapsedSec,
+   *                              etaTotalSec, etaRemainingSec, algo, historyCount, rounds[] }
+   */
+  runProgress: (id) => request.get('/reverse/runs/' + id + '/progress'),
 
   /**
    * <p>查询 Run 最终结果 (反算参数/目标达成情况)</p>

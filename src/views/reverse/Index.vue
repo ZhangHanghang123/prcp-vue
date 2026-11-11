@@ -103,9 +103,11 @@
         <DashboardPanels v-if="activeTab === 'result'" />
       </el-tab-pane>
 
-      <!-- ===== Tab 4：运行记录（保留） ===== -->
+      <!-- ===== Tab 4：运行记录 ===== -->
       <el-tab-pane label="运行记录" name="runs">
-        <el-table :data="runs" v-loading="loadingRuns" border stripe height="calc(100vh - 220px)">
+        <!-- 注意: el-table 的 height/max-height 只接受数字, calc() 会导致行不渲染,
+             故用纯数值 + CSS 控制外层高度 -->
+        <el-table :data="runs" v-loading="loadingRuns" border stripe max-height="600" class="run-table">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="runCode" label="运行编码" width="200" />
           <el-table-column prop="schemeName" label="方案" min-width="180" />
@@ -238,21 +240,119 @@
       </span>
     </el-dialog>
 
-    <!-- 运行日志 -->
-    <el-dialog :title="`运行日志 - ${currentRun && currentRun.runCode}`" :visible.sync="logDialog" width="780px">
-      <el-table :data="logs" border size="mini" max-height="500">
-        <el-table-column prop="id" label="#" width="60" />
-        <el-table-column prop="logLevel" label="级别" width="80">
-          <template slot-scope="s">
-            <el-tag size="mini" :type="s.row.logLevel==='ERROR'?'danger':(s.row.logLevel==='WARN'?'warning':'info')">{{ s.row.logLevel }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="progress" label="进度" width="80">
-          <template slot-scope="s">{{ s.row.progress == null ? '-' : s.row.progress + '%' }}</template>
-        </el-table-column>
-        <el-table-column prop="logMessage" label="消息" />
-        <el-table-column prop="createdAt" label="时间" width="160" />
-      </el-table>
+    <!-- 运行日志抽屉（对位 Python 版 ReverseCalc.tsx 日志抽屉：状态条 + 轮次面板 + 实时日志流） -->
+    <el-dialog :title="`反算日志：${currentRun && currentRun.runCode}`" :visible.sync="logDialog"
+               width="900px" top="6vh" @open="startLogPolling" @closed="stopLogPolling">
+      <div v-if="currentRun" class="run-log-drawer">
+
+        <!-- ① 状态条 -->
+        <el-descriptions :column="4" border size="mini" class="run-status-bar">
+          <el-descriptions-item label="状态">
+            <el-tag size="mini" :type="drawerStatusType">{{ runStatusLabel }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="进度">
+            <el-progress :percentage="Number(logProgress.percent || 0)" :stroke-width="10"
+                         :show-text="false" style="width:120px" />
+          </el-descriptions-item>
+          <el-descriptions-item label="当前阶段">
+            <el-tag v-if="logProgress.stage" size="mini" type="info">{{ stageLabel(logProgress.stage) }}</el-tag>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="轮次">
+            <span v-if="logProgress.roundNo">
+              第 <b class="hl-blue">{{ logProgress.roundNo }}</b> / {{ logProgress.totalRounds || '-' }} 轮
+              <span class="muted">（已完成 {{ logProgress.roundsCompleted || 0 }}，还剩 {{ logProgress.roundsRemaining || 0 }}）</span>
+            </span>
+            <span v-else>-</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="已用时间">{{ fmtDuration(logProgress.elapsedSec) }}</el-descriptions-item>
+          <el-descriptions-item label="预计耗时">{{ fmtDuration(logProgress.etaTotalSec) }}</el-descriptions-item>
+          <el-descriptions-item label="预计剩余">
+            <span v-if="logProgress.done">-</span>
+            <span v-else>{{ fmtDuration(logProgress.etaRemainingSec) }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="算法">
+            <el-tag size="mini" effect="plain" type="info">{{ logProgress.algo || currentRun.algorithm || '-' }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="日志条数">{{ logProgress.historyCount || logs.length }}</el-descriptions-item>
+          <el-descriptions-item label="轮次数">{{ logRounds.length }}</el-descriptions-item>
+          <el-descriptions-item label="方案" :span="4">
+            {{ logProgress.schemeCode || currentRun.schemeCode || '-' }} · {{ logProgress.schemeName || currentRun.schemeName || '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- ② 轮次面板 -->
+        <div v-if="logRounds.length" class="round-panel">
+          <div class="round-panel-title">推算轮次（{{ logRounds.length }} 轮）</div>
+          <div class="round-list">
+            <div v-for="rd in logRounds" :key="rd.roundNo + '-' + rd.algo" class="round-item">
+              <div class="round-head">
+                <el-tag size="mini" :type="roundStatusType(rd.status)">第 {{ rd.roundNo }} 轮</el-tag>
+                <el-tag size="mini" effect="plain">{{ rd.algo }}</el-tag>
+                <span class="muted round-msg">{{ rd.message || '' }}</span>
+                <span v-if="rd.durationSec != null" class="muted round-cost">耗时 {{ fmtDuration(rd.durationSec) }}</span>
+              </div>
+              <div class="round-body">
+                <span>得分 <b class="hl-blue">{{ rd.score != null ? rd.score : '-' }}</b></span>
+                <span>目标值 <b>{{ rd.optimalValue != null ? Number(rd.optimalValue).toFixed(4) : '-' }}</b></span>
+                <span>目标达成
+                  <b :class="rd.targetHit === true ? 'hl-ok' : (rd.targetHit === false ? 'hl-bad' : '')">
+                    {{ rd.targetHit == null ? '-' : (rd.targetHit ? '全部达成' : '未全部达成') }}
+                  </b>
+                </span>
+                <span v-if="rd.etaTotalSec">预计总耗时 <b>{{ fmtDuration(rd.etaTotalSec) }}</b></span>
+              </div>
+              <!-- 每轮逐指标明细 -->
+              <el-table v-if="scoreDetailKeys(rd).length" :data="scoreDetailRows(rd)" size="mini" border class="round-kpi">
+                <el-table-column label="指标" width="110">
+                  <template #default="{ row }"><el-tag size="mini" effect="plain">{{ row.kpi }}</el-tag></template>
+                </el-table-column>
+                <el-table-column label="目标" width="90" align="right">
+                  <template #default="{ row }">{{ row.target }}</template>
+                </el-table-column>
+                <el-table-column label="实测" width="90" align="right">
+                  <template #default="{ row }"><b class="hl-blue">{{ row.actual }}</b></template>
+                </el-table-column>
+                <el-table-column label="达成度" width="90" align="right">
+                  <template #default="{ row }">{{ row.ratio }}</template>
+                </el-table-column>
+                <el-table-column label="得分" width="80" align="right">
+                  <template #default="{ row }"><b>{{ row.score }}</b></template>
+                </el-table-column>
+                <el-table-column label="段位" min-width="120">
+                  <template #default="{ row }"><span class="muted">{{ row.segment || '-' }}</span></template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ 实时日志流 -->
+        <div class="log-stream-head">
+          <span class="log-stream-title">运行日志</span>
+          <span class="muted">
+            {{ logProgress.done ? '（运行已结束）' : '（实时刷新中 · 每 ' + Math.round((logProgress.pollIntervalMs || 2000) / 1000) + ' 秒）' }}
+          </span>
+          <el-switch v-model="logAutoScroll" active-text="自动滚动" class="log-autoscroll" />
+        </div>
+        <div ref="logBox" class="log-stream">
+          <div v-if="!logs.length" class="log-empty">暂无日志...</div>
+          <div v-for="l in logs" :key="l.id" class="log-line">
+            <span class="log-ts">{{ (l.createdAt || '').substring(11, 19) }}</span>
+            <span v-if="l.roundNo != null" class="log-round">[R{{ l.roundNo }}]</span>
+            <span v-if="l.stage" class="log-stage">[{{ stageLabel(l.stage) }}]</span>
+            <span class="log-level" :class="'lv-' + String(l.logLevel || 'INFO').toLowerCase()">[{{ l.logLevel }}]</span>
+            <span class="log-msg">{{ l.logMessage }}</span>
+            <span v-if="l.progress != null" class="log-pct">({{ Number(l.progress).toFixed(0) }}%)</span>
+          </div>
+        </div>
+
+        <!-- ④ 指标快照 -->
+        <div v-if="logProgress.metrics" class="log-metrics">
+          <strong>反算指标：</strong>
+          <pre>{{ JSON.stringify(logProgress.metrics, null, 2) }}</pre>
+        </div>
+      </div>
     </el-dialog>
 
     <!-- 运行结果 -->
@@ -356,10 +456,30 @@ export default {
       // Run
       runs: [], loadingRuns: false,
       logDialog: false, currentRun: null, logs: [],
+      // 运行日志抽屉: 状态条 + 轮次面板 + 实时日志流 (对位 Python 版 ReverseCalc.tsx)
+      logProgress: {}, logRounds: [], logAutoScroll: true,
+      logSinceId: 0, logTimer: null, logPolling: false,
       resultDialog: false, currentResult: null, resultFilter: ''
     }
   },
   computed: {
+    /** 运行状态标签文案 */
+    runStatusLabel() {
+      const s = this.logProgress.status || (this.currentRun && this.currentRun.status) || 'PENDING'
+      return ({ PENDING: '待执行', RUNNING: '运行中', SUCCESS: '成功', FAILED: '失败', CANCELLED: '已取消' })[s] || s
+    },
+    /**
+     * <p>抽屉状态条的状态标签配色</p>
+     *
+     * <p>⚠️ 不可命名为 runStatusType —— 那是表格「状态」列用的<b>方法</b>,
+     * 同名 computed 会覆盖它并导致渲染报错 (is not a function) → 整表渲染中断。</p>
+     *
+     * @returns {string} ElementUI tag type
+     */
+    drawerStatusType() {
+      const s = this.logProgress.status || (this.currentRun && this.currentRun.status) || 'PENDING'
+      return ({ PENDING: 'info', RUNNING: 'warning', SUCCESS: 'success', FAILED: 'danger', CANCELLED: 'info' })[s] || 'info'
+    },
     kpiMap() {
       try {
         if (!this.currentResult || !this.currentResult.metrics) return {}
@@ -659,18 +779,189 @@ export default {
       catch (e) { this.$message.error('删除失败') }
     },
     /**
-     * <p>查看运行日志弹窗</p>
+     * <p>查看运行日志抽屉</p>
+     *
+     * <p>打开时立即拉一次全量日志 + 进度, 之后每 2 秒增量轮询 (游标推进)。
+     * 运行结束后自动停止并补拉一次, 避免丢失最后几行。</p>
      *
      * @param {Object} row 运行行
      * @returns {Promise<void>}
      */
     async viewLogs(row) {
       this.currentRun = row
+      this.logs = []
+      this.logRounds = []
+      this.logProgress = {}
+      this.logSinceId = 0
       this.logDialog = true
+    },
+
+    /**
+     * <p>启动日志轮询 (抽屉打开时触发)</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async startLogPolling() {
+      if (!this.currentRun) return
+      this.stopLogPolling()
+      await this.tickLogs()
+      this.logTimer = setInterval(() => this.tickLogs(), 2000)
+    },
+
+    /**
+     * <p>停止日志轮询 (抽屉关闭时触发)</p>
+     *
+     * @returns {void}
+     */
+    stopLogPolling() {
+      if (this.logTimer) {
+        clearInterval(this.logTimer)
+        this.logTimer = null
+      }
+    },
+
+    /**
+     * <p>单次轮询: 增量拉日志 + 拉进度</p>
+     *
+     * @returns {Promise<void>}
+     */
+    async tickLogs() {
+      if (!this.currentRun || this.logPolling) return
+      this.logPolling = true
       try {
-        const r = await reverseApi.runLogs(row.id, 0)
-        this.logs = (r.data && r.data.items) || r.items || []
-      } catch (e) { this.$message.error('加载日志失败') }
+        // ① 增量日志
+        const r = await reverseApi.runLogs(this.currentRun.id, this.logSinceId)
+        const items = (r && r.items) || []
+        if (items.length) {
+          this.logs = this.logs.concat(items)
+          this.logSinceId = items[items.length - 1].id
+          this.$nextTick(this.scrollLogToBottom)
+        }
+        // ② 进度契约
+        const pg = await reverseApi.runProgress(this.currentRun.id)
+        if (pg) {
+          this.logProgress = pg
+          if (pg.rounds) this.logRounds = pg.rounds
+          // ③ 结束自动停止 + 收尾补拉一次
+          if (pg.done) {
+            this.stopLogPolling()
+            const last = await reverseApi.runLogs(this.currentRun.id, this.logSinceId)
+            const more = (last && last.items) || []
+            if (more.length) {
+              this.logs = this.logs.concat(more)
+              this.logSinceId = more[more.length - 1].id
+              this.$nextTick(this.scrollLogToBottom)
+            }
+          }
+        }
+      } catch (e) {
+        // 轮询失败静默处理, 避免弹窗刷屏
+      } finally {
+        this.logPolling = false
+      }
+    },
+
+    /**
+     * <p>日志流滚动到底部 (自动滚动开启时)</p>
+     *
+     * @returns {void}
+     */
+    scrollLogToBottom() {
+      if (!this.logAutoScroll) return
+      const el = this.$refs.logBox
+      if (el) el.scrollTop = el.scrollHeight
+    },
+
+    /**
+     * <p>阶段码 → 中文名</p>
+     *
+     * @param {string} s 阶段码 (SUBMIT/LOAD_TARGET/...)
+     * @returns {string} 中文名
+     */
+    stageLabel(s) {
+      return ({
+        SUBMIT: '提交',
+        LOAD_TARGET: '加载目标',
+        LOAD_BALANCE: '加载账户册',
+        SOLVE: '求解',
+        SAVE_RESULT: '保存结果',
+        DONE: '完成',
+        FAILED: '失败'
+      })[s] || s
+    },
+
+    /**
+     * <p>秒 → 可读时长</p>
+     *
+     * @param {number} sec 秒
+     * @returns {string} 如 4s / 2m30s
+     */
+    fmtDuration(sec) {
+      if (sec == null) return '-'
+      const n = Number(sec)
+      if (isNaN(n)) return '-'
+      if (n < 60) return Math.round(n) + 's'
+      const m = Math.floor(n / 60)
+      const s = Math.round(n % 60)
+      return m + 'm' + (s ? s + 's' : '')
+    },
+
+    /**
+     * <p>轮次状态 → 标签配色</p>
+     *
+     * @param {string} st 轮次状态
+     * @returns {string} ElementUI tag type
+     */
+    roundStatusType(st) {
+      return st === 'SUCCESS' ? 'success' : (st === 'FAILED' ? 'danger' : 'warning')
+    },
+
+    /**
+     * <p>取某轮的逐指标明细 key 列表</p>
+     *
+     * @param {Object} rd 轮次对象
+     * @returns {Array<string>} 指标 key 列表
+     */
+    scoreDetailKeys(rd) {
+      const d = this.parseJson(rd && rd.scoreDetails)
+      return d && typeof d === 'object' ? Object.keys(d) : []
+    },
+
+    /**
+     * <p>把某轮的 scoreDetails 转成表格行</p>
+     *
+     * @param {Object} rd 轮次对象
+     * @returns {Array<Object>} 表格行
+     */
+    scoreDetailRows(rd) {
+      const d = this.parseJson(rd && rd.scoreDetails) || {}
+      return Object.keys(d).map(k => {
+        const it = d[k] || {}
+        return {
+          kpi: k,
+          target: it.target != null ? Number(it.target).toFixed(2) : '-',
+          actual: it.actual != null ? Number(it.actual).toFixed(2) : '-',
+          ratio: it.ratio != null ? (Number(it.ratio) * 100).toFixed(1) + '%' : '-',
+          score: it.score != null ? it.score : '-',
+          segment: it.segment_desc || it.segmentDesc || ''
+        }
+      })
+    },
+
+    /**
+     * <p>安全解析 JSON 字符串</p>
+     *
+     * @param {string|Object} v 原始值
+     * @returns {Object|null} 解析结果
+     */
+    parseJson(v) {
+      if (v == null) return null
+      if (typeof v === 'object') return v
+      try {
+        return JSON.parse(String(v))
+      } catch (e) {
+        return null
+      }
     },
     /**
      * <p>查看运行结果弹窗 (Optimal + 耗时 + KPI 达成 + 明细行)</p>
@@ -717,4 +1008,76 @@ export default {
   border: 1px dashed var(--border-color-2);
 }
 .empty-tip i { font-size: 22px; margin-right: 6px; color: var(--brand-primary); }
+
+/* ===== 运行日志抽屉：状态条 + 轮次面板 + 实时日志流 ===== */
+.run-log-drawer { font-size: 13px; }
+.run-status-bar { margin-bottom: 12px; }
+.run-status-bar >>> .el-descriptions-item__label {
+  background: #F2F6FB; color: var(--text-secondary); font-weight: 500; width: 76px;
+}
+.run-status-bar >>> .el-descriptions-item__content { padding: 6px 10px; }
+.muted { color: var(--text-muted); font-size: 11.5px; }
+.hl-blue { color: var(--brand-primary); }
+.hl-ok { color: #00A870; }
+.hl-bad { color: #F53F3F; }
+
+/* 轮次面板 */
+.round-panel { margin-bottom: 12px; }
+.round-panel-title {
+  font-size: 12.5px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary);
+}
+.round-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 260px; overflow: auto;
+}
+.round-item {
+  border: 1px solid var(--border-color-2); border-radius: 8px;
+  padding: 7px 10px; background: #FAFBFC;
+}
+.round-item:hover { border-color: var(--brand-primary); background: #F5F9FF; }
+.round-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.round-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.round-cost { margin-left: auto; }
+.round-body {
+  display: flex; gap: 18px; margin-top: 5px; padding-top: 5px;
+  border-top: 1px dashed var(--border-color-2); font-size: 11.5px; color: var(--text-secondary);
+}
+.round-body b { margin-left: 4px; font-size: 12px; }
+.round-kpi { margin-top: 6px; }
+.round-kpi >>> .el-table__cell { padding: 3px 0; font-size: 11px; }
+
+/* 实时日志流 */
+.log-stream-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.log-stream-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.log-autoscroll { margin-left: auto; }
+.log-stream {
+  background: #0F172A; color: #94A3B8;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11.5px; line-height: 1.75;
+  padding: 10px 12px; border-radius: 6px;
+  height: 300px; overflow: auto;
+}
+.log-line { margin-bottom: 1px; white-space: pre-wrap; word-break: break-all; }
+.log-ts { color: #64748B; }
+.log-round { color: #A78BFA; }
+.log-stage { color: #38BDF8; }
+.log-level.lv-info { color: #93C5FD; }
+.log-level.lv-warn { color: #FCD34D; }
+.log-level.lv-error { color: #FCA5A5; }
+.log-msg { color: #CBD5E1; }
+.log-pct { color: #64748B; }
+.log-empty { color: #64748B; }
+
+/* 指标快照 */
+.log-metrics {
+  margin-top: 12px; padding: 10px 12px;
+  background: #F0FDF4; border-radius: 6px; font-size: 12px;
+}
+.log-metrics strong { color: #15803D; }
+.log-metrics pre {
+  margin: 6px 0 0; font-size: 11px; white-space: pre-wrap;
+  word-break: break-all; color: var(--text-secondary);
+}
 </style>
