@@ -143,16 +143,16 @@
                 </el-descriptions>
               </div>
 
-              <!-- 区域 2: 是否模型测算 -->
+              <!-- 区域 2: 新业务增长方式 -->
               <div class="cfg-panel cfg-panel-hl">
                 <div class="cfg-panel-title">
-                  <i class="el-icon-question"></i> 是否模型测算
+                  <i class="el-icon-question"></i> 新业务增长方式
                 </div>
                 <el-form :model="cfgForm" label-width="90px" size="small" style="margin-bottom:0">
-                  <el-form-item label="模型测算">
+                  <el-form-item label="新业务增长方式">
                     <el-select v-model="cfgForm.is_model_calc" style="width:200px">
-                      <el-option label="是" :value="1" />
-                      <el-option label="否" :value="2" />
+                      <el-option label="模型决策" :value="1" />
+                      <el-option label="存量求解" :value="2" />
                     </el-select>
                     <span class="cfg-hint">
                       <i class="el-icon-warning-outline"></i>
@@ -408,7 +408,7 @@ export default {
       /** 🆕 v2.4: 树的默认展开键 (已配置节点 + 全部一级) */
       expandedTreeKeys: [],
       selectedNode: null,
-      /** 节点配置表单 (v2.4: 年化增长率 + 期限单位 + 是否模型测算 + 节奏类型 + 期限占比子表) */
+      /** 节点配置表单 (v2.4: 年化增长率 + 期限单位 + 新业务增长方式 + 节奏类型 + 期限占比子表) */
       cfgForm: {
         annual_growth_rate: 5.0,
         term_unit: 'MONTH',
@@ -832,7 +832,7 @@ export default {
           coa_node_id: this.selectedNode.id,
           annual_growth_rate: this.cfgForm.annual_growth_rate,
           term_unit: this.cfgForm.term_unit,
-          // 🆕 v2.1: 是否模型测算 + 节奏配置类型
+          // 🆕 v2.1: 新业务增长方式 (1=模型决策 2=存量求解) + 节奏配置类型
           is_model_calc: this.cfgForm.is_model_calc,
           rhythm_type: this.cfgForm.rhythm_type,
           remark: '',
